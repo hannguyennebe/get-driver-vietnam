@@ -284,6 +284,12 @@ export function AppShell({
           <Button
             className={`${role === "Admin" ? "mt-2 " : ""}w-full justify-start text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]`}
             onClick={() => {
+              // Clear server session cookie (URL-typing protection)
+              try {
+                fetch("/api/auth/session", { method: "DELETE" });
+              } catch {
+                // ignore
+              }
               clearDemoSession();
               router.replace("/login");
             }}

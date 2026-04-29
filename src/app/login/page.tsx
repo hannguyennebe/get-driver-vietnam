@@ -141,6 +141,19 @@ export default function LoginPage() {
       };
       setDemoSession({ username: phone, role, permissions, createdAt: Date.now() });
 
+      // Create a server-verified session cookie (prevents URL-typing bypass).
+      if (token) {
+        try {
+          await fetch("/api/auth/session", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ idToken: token }),
+          });
+        } catch {
+          // Ignore: client session still exists, but server-guarded pages may require re-login.
+        }
+      }
+
       if (remember) {
         localStorage.setItem(REMEMBER_KEY, "1");
         localStorage.setItem(CREDS_KEY, JSON.stringify({ username, password }));
