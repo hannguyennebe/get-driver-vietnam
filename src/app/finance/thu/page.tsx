@@ -3,11 +3,10 @@
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import {
-  ensureReservationStore,
-  listActiveReservations,
   type Currency,
   type Reservation,
 } from "@/lib/reservations/reservationStore";
+import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 import {
   ensurePartnersStore,
   getPartners,
@@ -70,12 +69,10 @@ export default function FinanceThuPage() {
   const [agentPdfAgentId, setAgentPdfAgentId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    ensureReservationStore();
     ensurePartnersStore();
     ensureThuHoReportStore();
 
     const load = () => {
-      setReservations(listActiveReservations());
       const p = getPartners();
       setTravelAgentById(Object.fromEntries(p.travelAgents.map((x) => [x.id, x])));
       setThuHoPayments(listThuHoPayments());
@@ -83,10 +80,10 @@ export default function FinanceThuPage() {
       setPaidFlags(readPaidFlags());
     };
     load();
+    const unsub = subscribeActiveReservations(setReservations);
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
-      if (e.key.includes("getdriver.reservations.v1")) load();
       if (e.key.includes("getdriver.data.partners")) load();
       if (e.key.includes("getdriver.finance.thuho.payments")) load();
       if (e.key.includes("getdriver.finance.cashbook")) load();
@@ -98,6 +95,7 @@ export default function FinanceThuPage() {
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, []);
 

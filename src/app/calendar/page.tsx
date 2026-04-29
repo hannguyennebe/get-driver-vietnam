@@ -7,13 +7,12 @@ import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { ensureTripsStore, listTrips, deleteTrip, type Trip, type TripStatus } from "@/lib/calendar/tripsStore";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
+import type { Reservation } from "@/lib/reservations/reservationStore";
 import {
-  ensureCancelledReservationStore,
-  ensureReservationStore,
-  listCancelledReservations,
-  listActiveReservations,
-  cancelFromCalendarTrip,
-} from "@/lib/reservations/reservationStore";
+  subscribeActiveReservations,
+  subscribeCancelledReservations,
+  cancelReservationFirestore,
+} from "@/lib/reservations/reservationsFirestore";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -72,15 +71,14 @@ export default function CalendarPage() {
 
   React.useEffect(() => {
     ensureTripsStore();
-    ensureReservationStore();
-    ensureCancelledReservationStore();
-    setCancelledCodes(new Set(listCancelledReservations().map((x) => x.code)));
+    const demo = listTrips();
 
-    const load = () => {
-      const activeReservations = listActiveReservations();
-      setReservationCodes(new Set(activeReservations.map((x) => x.code)));
+    let activeRows: Reservation[] = [];
+    let cancelledSet = new Set<string>();
 
-      const reservationTrips: Trip[] = activeReservations
+    const recompute = () => {
+      setReservationCodes(new Set(activeRows.map((x) => x.code)));
+      const reservationTrips: Trip[] = activeRows
         .map((r) => ({
           id: r.code,
           date: dmyToIso(r.date),
@@ -100,28 +98,34 @@ export default function CalendarPage() {
         }))
         .filter((t) => Boolean(t.date));
 
-      const demo = listTrips().filter((t) => !reservationTrips.some((x) => x.id === t.id));
-      setTrips([...reservationTrips, ...demo]);
-      setCancelledCodes(new Set(listCancelledReservations().map((x) => x.code)));
+      const nextDemo = listTrips().filter((t) => !reservationTrips.some((x) => x.id === t.id));
+      setTrips([...reservationTrips, ...nextDemo]);
+      setCancelledCodes(new Set(cancelledSet));
     };
-    load();
+
+    const unsubA = subscribeActiveReservations((rows) => {
+      activeRows = rows;
+      recompute();
+    });
+    const unsubC = subscribeCancelledReservations((rows) => {
+      cancelledSet = new Set(rows.map((x: any) => x.code));
+      recompute();
+    });
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
-      if (e.key.includes("getdriver.calendar.trips")) load();
-      if (e.key.includes("getdriver.reservations.v1")) load();
-      if (e.key.includes("getdriver.reservations.cancelled")) {
-        setCancelledCodes(new Set(listCancelledReservations().map((x) => x.code)));
-      }
+      if (e.key.includes("getdriver.calendar.trips")) recompute();
     };
     window.addEventListener("storage", onStorage);
     const onFocus = () => {
-      load();
+      recompute();
     };
     window.addEventListener("focus", onFocus);
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsubA();
+      unsubC();
     };
   }, []);
 
@@ -294,18 +298,11 @@ export default function CalendarPage() {
               className="h-10 w-1/2 rounded-md bg-red-600 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
               onClick={() => {
                 if (!cancelTrip) return;
-                cancelFromCalendarTrip({
-                  code: cancelTrip.id,
-                  dateDmy: isoToDmy(cancelTrip.date),
-                  time: cancelTrip.time,
-                  customerName: cancelTrip.customer,
-                  pickup: cancelTrip.from,
-                  dropoff: cancelTrip.to,
-                  amountVnd: cancelTrip.revenueVnd,
-                });
+                if (reservationCodes.has(cancelTrip.id)) {
+                  void cancelReservationFirestore(cancelTrip.id, { cancelledFrom: "calendar" });
+                }
                 deleteTrip(cancelTrip.id);
                 setTrips((all) => all.filter((x) => x.id !== cancelTrip.id));
-                setCancelledCodes(new Set(listCancelledReservations().map((x) => x.code)));
                 setOpenCancel(false);
               }}
             >

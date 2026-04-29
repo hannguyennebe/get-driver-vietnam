@@ -17,10 +17,7 @@ import {
   type VehicleType,
 } from "@/lib/data/vehicleTypeStore";
 import {
-  addReservation,
   generateBookingId,
-  listReservations,
-  updateReservation,
   type Currency,
   type PaymentType,
   type Reservation,
@@ -28,6 +25,11 @@ import {
 import { useRouter } from "next/navigation";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import {
+  createReservation,
+  getReservationByCode,
+  patchReservation,
+} from "@/lib/reservations/reservationsFirestore";
 
 export default function ReservationNewPage() {
   return (
@@ -55,6 +57,7 @@ function ReservationNewInner() {
   const searchParams = useSearchParams();
   const [sales, setSales] = React.useState("—");
   const [createdAt, setCreatedAt] = React.useState<Date | null>(null);
+  const [originalCreatedAt, setOriginalCreatedAt] = React.useState<number | null>(null);
 
   const [travelAgents, setTravelAgents] = React.useState<
     Array<{ id: string; name: string; paymentType?: "Phải Trả" | "Công Nợ"; taxIncluded?: boolean }>
@@ -113,38 +116,47 @@ function ReservationNewInner() {
     setForm((s) => ({ ...s, vehicleType: s.vehicleType || vt[0]?.name || "Xe 4 chỗ" }));
 
     const code = searchParams.get("code");
-    if (code) {
-      const existing = listReservations().find((r) => r.code === code);
-      if (existing) {
-        setEditingCode(existing.code);
-        setForm((s) => ({
-          ...s,
-          bookingId: existing.code,
-          travelAgentId: existing.travelAgentId ?? "",
-          tripDateISO: dmyToIso(existing.date),
-          pickupTime: existing.time ?? "",
-          customerName: existing.customerName ?? "",
-          customerCount: String(existing.customerCount ?? 1),
-          itinerary: existing.itinerary ?? "",
-          vehicleType: existing.vehicleType ?? (vt[0]?.name || ""),
-          unitQty: String(existing.unitQty ?? 1),
-          unitPrice: String(existing.unitPrice ?? 0),
-          taxIncluded: existing.taxIncluded ? ("Có" as const) : ("Không" as const),
-          currency: (existing.currency ?? "VND") as Currency,
-          pickup: existing.pickup ?? "",
-          dropoff: existing.dropoff ?? "",
-          distanceKm: String(existing.distanceKm ?? 0),
-          paymentType: (existing.paymentType ?? "Phải Thu") as PaymentType,
-          thuHoAmount: String(existing.thuHoAmount ?? 0),
-          thuHoCurrency: (existing.thuHoCurrency ?? "VND") as Currency,
-          note: existing.note ?? "",
-        }));
+    let cancelled = false;
+    void (async () => {
+      if (code) {
+        const existing = await getReservationByCode(code);
+        if (cancelled) return;
+        if (existing) {
+          setEditingCode(existing.code);
+          setOriginalCreatedAt(existing.createdAt ?? null);
+          setCreatedAt(new Date(existing.createdAt ?? Date.now()));
+          setForm((s) => ({
+            ...s,
+            bookingId: existing.code,
+            travelAgentId: existing.travelAgentId ?? "",
+            tripDateISO: dmyToIso(existing.date),
+            pickupTime: existing.time ?? "",
+            customerName: existing.customerName ?? "",
+            customerCount: String(existing.customerCount ?? 1),
+            itinerary: existing.itinerary ?? "",
+            vehicleType: existing.vehicleType ?? (vt[0]?.name || ""),
+            unitQty: String(existing.unitQty ?? 1),
+            unitPrice: String(existing.unitPrice ?? 0),
+            taxIncluded: existing.taxIncluded ? ("Có" as const) : ("Không" as const),
+            currency: (existing.currency ?? "VND") as Currency,
+            pickup: existing.pickup ?? "",
+            dropoff: existing.dropoff ?? "",
+            distanceKm: String(existing.distanceKm ?? 0),
+            paymentType: (existing.paymentType ?? "Phải Thu") as PaymentType,
+            thuHoAmount: String(existing.thuHoAmount ?? 0),
+            thuHoCurrency: (existing.thuHoCurrency ?? "VND") as Currency,
+            note: existing.note ?? "",
+          }));
+        } else {
+          setError("Không tìm thấy booking.");
+        }
+      } else {
+        const id = generateBookingId([]);
+        setForm((s) => ({ ...s, bookingId: id }));
+        setEditingCode(null);
+        setOriginalCreatedAt(null);
       }
-    } else {
-      const id = generateBookingId(listReservations().map((r) => r.code));
-      setForm((s) => ({ ...s, bookingId: id }));
-      setEditingCode(null);
-    }
+    })();
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
@@ -199,6 +211,7 @@ function ReservationNewInner() {
     window.addEventListener("focus", onFocus);
 
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
     };
@@ -509,7 +522,7 @@ function ReservationNewInner() {
               </Button>
               <Button
                 className="h-9 bg-[#2E7AB0] text-white hover:bg-[#276a98]"
-                onClick={() => {
+                onClick={async () => {
                   setError(null);
                   if (!form.tripDateISO.trim()) return setError("Vui lòng chọn Ngày đi.");
                   if (!form.pickupTime.trim()) return setError("Vui lòng nhập Giờ đón.");
@@ -538,18 +551,16 @@ function ReservationNewInner() {
                   const next: Reservation = {
                     code: form.bookingId,
                     createdAt: editingCode
-                      ? (listReservations().find((r) => r.code === editingCode)?.createdAt ?? Date.now())
+                      ? (originalCreatedAt ?? Date.now())
                       : Date.now(),
                     createdDate: editingCode
-                      ? (listReservations().find((r) => r.code === editingCode)?.createdDate ??
-                        (createdAt ?? new Date()).toLocaleDateString("vi-VN"))
+                      ? (createdAt ?? new Date()).toLocaleDateString("vi-VN")
                       : (createdAt ?? new Date()).toLocaleDateString("vi-VN"),
                     createdTime: editingCode
-                      ? (listReservations().find((r) => r.code === editingCode)?.createdTime ??
-                        (createdAt ?? new Date()).toLocaleTimeString("vi-VN", {
+                      ? (createdAt ?? new Date()).toLocaleTimeString("vi-VN", {
                           hour: "2-digit",
                           minute: "2-digit",
-                        }))
+                        })
                       : (createdAt ?? new Date()).toLocaleTimeString("vi-VN", {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -579,7 +590,7 @@ function ReservationNewInner() {
 
                   try {
                     if (editingCode) {
-                      updateReservation(editingCode, {
+                      await patchReservation(editingCode, {
                         sales: next.sales,
                         date: next.date,
                         time: next.time,
@@ -602,16 +613,16 @@ function ReservationNewInner() {
                         note: next.note,
                         // Editing booking resets dispatch status by design.
                         status: "Chờ điều xe",
-                        assignedDriver: undefined,
-                        assignedDriverPhone: undefined,
-                        assignedVehiclePlate: undefined,
-                        assignedExternalPriceVnd: undefined,
-                        assignedSupplierId: undefined,
-                        assignedSupplierPaymentType: undefined,
+                        assignedDriver: null as any,
+                        assignedDriverPhone: null as any,
+                        assignedVehiclePlate: null as any,
+                        assignedExternalPriceVnd: null as any,
+                        assignedSupplierId: null as any,
+                        assignedSupplierPaymentType: null as any,
                       });
                       router.replace(fromDashboard ? "/dashboard" : "/data/reservations");
                     } else {
-                      addReservation(next);
+                      await createReservation(next);
                       router.replace("/data/reservations");
                     }
                   } catch {

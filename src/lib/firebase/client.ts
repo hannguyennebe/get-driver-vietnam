@@ -1,5 +1,6 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 type FirebaseWebConfig = {
   apiKey: string;
@@ -45,6 +46,7 @@ function getFirebaseConfig() {
 
 let cachedApp: FirebaseApp | null = null;
 let cachedAuth: Auth | null = null;
+let cachedDb: Firestore | null = null;
 
 async function fetchHostingWebConfig(): Promise<FirebaseWebConfig | null> {
   if (typeof window === "undefined") return null;
@@ -80,6 +82,27 @@ export function getFirebaseAuth(): Auth {
   cachedApp = getApps().length > 0 ? getApps()[0]! : initializeApp(cfg);
   cachedAuth = getAuth(cachedApp);
   return cachedAuth;
+}
+
+export function getFirebaseDb(): Firestore {
+  if (cachedDb) return cachedDb;
+  // Ensure app is initialized (and thus config exists)
+  const auth = getFirebaseAuth();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void auth;
+  if (!cachedApp) throw new Error("Firebase app not initialized");
+  cachedDb = getFirestore(cachedApp);
+  return cachedDb;
+}
+
+export async function initFirebaseDb(): Promise<Firestore | null> {
+  if (cachedDb) return cachedDb;
+  if (typeof window === "undefined") return null;
+  const auth = await initFirebaseAuth();
+  if (!auth) return null;
+  if (!cachedApp) return null;
+  cachedDb = getFirestore(cachedApp);
+  return cachedDb;
 }
 
 export function tryGetFirebaseAuth(): Auth | null {

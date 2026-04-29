@@ -33,56 +33,8 @@ type Store = {
   suppliers: Supplier[];
 };
 
-const SEED: Store = {
-  travelAgents: [
-    {
-      id: "TA-001",
-      name: "Saigon Travel",
-      businessModel: "B2B",
-      contactName: "Ms. Linh",
-      phone: "0909000001",
-      email: "linh@saigontravel.vn",
-      address: "TPHCM",
-      website: "saigontravel.vn",
-      paymentType: "Công Nợ",
-      taxIncluded: true,
-      paymentTerms: { mode: "MONTHLY", payDay: 10, offsetMonths: 1 },
-    },
-    {
-      id: "TA-002",
-      name: "VietTours",
-      businessModel: "B2C",
-      contactName: "Mr. Nam",
-      phone: "0909000002",
-      email: "nam@viettours.vn",
-      address: "TPHCM",
-      website: "viettours.vn",
-      paymentType: "Phải Trả",
-      taxIncluded: false,
-      paymentTerms: { mode: "NEXT_DAY" },
-    },
-  ],
-  suppliers: [
-    {
-      id: "SUP-001",
-      name: "Garage Minh Phát",
-      contactName: "Anh Phát",
-      phone: "0909000101",
-      email: "contact@minhphat.vn",
-      paymentType: "Công Nợ",
-      paymentTerms: { mode: "MONTHLY", payDay: 10, offsetMonths: 1 },
-    },
-    {
-      id: "SUP-002",
-      name: "Công ty Dầu Nhớt ABC",
-      contactName: "Chị Hoa",
-      phone: "0909000102",
-      email: "sales@abcoil.vn",
-      paymentType: "Phải Trả",
-      paymentTerms: { mode: "NEXT_DAY" },
-    },
-  ],
-};
+// GO LIVE: start with empty master data (admin can add)
+const SEED: Store = { travelAgents: [], suppliers: [] };
 
 function safeParse(raw: string | null): Store | null {
   if (!raw) return null;

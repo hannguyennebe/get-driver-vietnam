@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == "Admin";
+    }
+
+    function hasView(p) {
+      return isSignedIn()
+        && request.auth.token.perms != null
+        && request.auth.token.perms.view != null
+        && p in request.auth.token.perms.view;
+    }
+
+    function hasEdit(p) {
+      return isSignedIn()
+        && request.auth.token.perms != null
+        && request.auth.token.perms.edit != null
+        && p in request.auth.token.perms.edit;
+    }
+
+    // Reservations (Booking)
+    match /reservations/{docId} {
+      allow read: if isAdmin() || hasView("data.reservations");
+      allow create, update, delete: if isAdmin() || hasEdit("data.reservations");
+    }
+  }
+}
+

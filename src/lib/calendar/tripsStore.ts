@@ -18,48 +18,8 @@ export type Trip = {
 
 const KEY = "getdriver.calendar.trips.v1";
 
-const SEED: Trip[] = [
-  {
-    id: "T-1001",
-    date: "2026-04-27",
-    time: "09:00",
-    customer: "Nguyễn Văn A",
-    from: "Q.1",
-    to: "Sân bay Tân Sơn Nhất",
-    status: "Hoàn thành",
-    revenueVnd: 350000,
-    driverName: "Nguyễn Văn An",
-    driverPhone: "0901234567",
-    vehiclePlate: "51A-123.45",
-    vehicleType: "7 chỗ",
-    vehicleColor: "Trắng",
-  },
-  {
-    id: "T-1002",
-    date: "2026-04-27",
-    time: "14:30",
-    customer: "Trần Thị B",
-    from: "Thủ Đức",
-    to: "Q.3",
-    status: "Đang chạy",
-    revenueVnd: 220000,
-    driverName: "Trần Minh Tuấn",
-    driverPhone: "0912345678",
-    vehiclePlate: "51A-234.56",
-    vehicleType: "4 chỗ",
-    vehicleColor: "Đen",
-  },
-  {
-    id: "T-1003",
-    date: "2026-04-29",
-    time: "08:15",
-    customer: "Phạm Văn C",
-    from: "Bình Thạnh",
-    to: "Q.7",
-    status: "Đã đặt",
-    revenueVnd: 180000,
-  },
-];
+// GO LIVE: no demo seed
+const SEED: Trip[] = [];
 
 function safeParse(raw: string | null): Trip[] | null {
   if (!raw) return null;

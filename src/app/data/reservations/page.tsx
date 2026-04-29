@@ -3,16 +3,16 @@
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import {
-  ensureCancelledReservationStore,
-  ensureReservationStore,
-  listActiveReservations,
-  listCancelledReservations,
   type CancelledReservation,
   type Reservation,
 } from "@/lib/reservations/reservationStore";
 import { ensurePartnersStore, getPartners } from "@/lib/data/partnersStore";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import {
+  subscribeActiveReservations,
+  subscribeCancelledReservations,
+} from "@/lib/reservations/reservationsFirestore";
 
 export default function DataReservationsPage() {
   const router = useRouter();
@@ -24,8 +24,6 @@ export default function DataReservationsPage() {
   >({});
 
   React.useEffect(() => {
-    ensureReservationStore();
-    ensureCancelledReservationStore();
     ensurePartnersStore();
 
     const p = getPartners();
@@ -33,15 +31,11 @@ export default function DataReservationsPage() {
       Object.fromEntries(p.travelAgents.map((x) => [x.id, x.name])),
     );
 
-    const load = () => {
-      setReservations(listActiveReservations());
-      setCancelled(listCancelledReservations());
-    };
-    load();
+    const unsubA = subscribeActiveReservations(setReservations);
+    const unsubC = subscribeCancelledReservations(setCancelled);
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
-      if (e.key.includes("getdriver.reservations")) load();
       if (e.key.includes("getdriver.data.partners")) {
         const pp = getPartners();
         setTravelAgentNameById(
@@ -50,12 +44,20 @@ export default function DataReservationsPage() {
       }
     };
     window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
+    const onFocus = () => {
+      // Partners are still local for now
+      const pp = getPartners();
+      setTravelAgentNameById(
+        Object.fromEntries(pp.travelAgents.map((x) => [x.id, x.name])),
+      );
+    };
     window.addEventListener("focus", onFocus);
 
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsubA();
+      unsubC();
     };
   }, []);
 

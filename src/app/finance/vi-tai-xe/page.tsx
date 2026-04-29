@@ -10,11 +10,8 @@ import {
   type DriverWallet,
 } from "@/lib/fleet/driverWalletStore";
 import { ensureDriverStore, listDrivers } from "@/lib/fleet/driverStore";
-import {
-  ensureReservationStore,
-  listActiveReservations,
-  type Reservation,
-} from "@/lib/reservations/reservationStore";
+import type { Reservation } from "@/lib/reservations/reservationStore";
+import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 
 type SourceFilter = "all" | "roster" | "dispatch";
 
@@ -33,7 +30,6 @@ export default function FinanceViTaiXePage() {
     ensureDriverStore();
     ensureDriverWalletStore();
     ensureWalletsForAllRosterDrivers();
-    ensureReservationStore();
 
     const drivers = listDrivers();
     const driverByCode = new Map(drivers.map((d) => [d.employeeCode, d]));
@@ -62,18 +58,17 @@ export default function FinanceViTaiXePage() {
     });
 
     setRows(enriched);
-    setReservations(listActiveReservations());
   }, []);
 
   React.useEffect(() => {
     load();
+    const unsub = subscribeActiveReservations(setReservations);
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
       if (
         e.key.includes("getdriver.fleet.driverWallets") ||
-        e.key.includes("getdriver.fleet.drivers") ||
-        e.key.includes("getdriver.reservations.v1")
+        e.key.includes("getdriver.fleet.drivers")
       ) {
         load();
       }
@@ -84,6 +79,7 @@ export default function FinanceViTaiXePage() {
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, [load]);
 

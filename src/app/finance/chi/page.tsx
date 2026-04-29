@@ -4,11 +4,10 @@ import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import { useRouter } from "next/navigation";
 import {
-  ensureReservationStore,
-  listActiveReservations,
   type Currency,
   type Reservation,
 } from "@/lib/reservations/reservationStore";
+import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 import {
   ensurePartnersStore,
   getPartners,
@@ -208,7 +207,6 @@ export default function FinanceChiPage() {
   const [payrollPdfError, setPayrollPdfError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    ensureReservationStore();
     ensurePartnersStore();
     ensureOtherExpensesStore();
     ensureDriverStore();
@@ -217,7 +215,6 @@ export default function FinanceChiPage() {
     ensureVehicleStore();
 
     const load = () => {
-      setReservations(listActiveReservations());
       const p = getPartners();
       setSupplierById(Object.fromEntries(p.suppliers.map((x) => [x.id, x])));
       setOtherExpenses(listOtherExpenses());
@@ -232,6 +229,7 @@ export default function FinanceChiPage() {
     };
     setCurrentUser(getDemoSession()?.username ?? "—");
     load();
+    const unsub = subscribeActiveReservations(setReservations);
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
@@ -250,6 +248,7 @@ export default function FinanceChiPage() {
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, []);
 

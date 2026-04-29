@@ -28,7 +28,11 @@ import {
   adjustDriverWalletBalance,
   type DriverWallet,
 } from "@/lib/fleet/driverWalletStore";
-import { ensureReservationStore, listActiveReservations } from "@/lib/reservations/reservationStore";
+import type { Reservation } from "@/lib/reservations/reservationStore";
+import {
+  getReservationByCode,
+  subscribeActiveReservations,
+} from "@/lib/reservations/reservationsFirestore";
 import {
   Dialog,
   DialogContent,
@@ -78,6 +82,7 @@ export default function DriversPage() {
   const [editKey, setEditKey] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [walletRev, setWalletRev] = React.useState(0);
+  const [reservations, setReservations] = React.useState<Reservation[]>([]);
   const [form, setForm] = React.useState({
     employeeCode: "",
     name: "",
@@ -91,36 +96,10 @@ export default function DriversPage() {
     ensureWalletsForAllRosterDrivers();
     setDrivers(listDrivers());
 
-    ensureReservationStore();
-    const loadExternal = () => {
-      const rows = listActiveReservations()
-        .filter((r) => r.status === "Đã điều xe")
-        .filter((r) => (r.assignedExternalPriceVnd ?? 0) > 0 || Boolean(r.assignedSupplierId))
-        .map((r): ExternalDispatchRow => ({
-          code: r.code,
-          driverName: r.assignedDriver ?? "—",
-          driverPhone: r.assignedDriverPhone ?? "—",
-          plate: r.assignedVehiclePlate ?? "—",
-          tripDate: r.date,
-          tripTime: r.time,
-          customerName: r.customerName,
-          itinerary: r.itinerary,
-        }));
-      setExternalRows(rows);
-
-      // Backfill: ensure wallets exist for external dispatch rows.
-      for (const x of rows) {
-        if (x.driverName === "—") continue;
-        if (x.driverPhone === "—") continue;
-        if (x.plate === "—") continue;
-        ensureWalletForExternalDispatch(x.driverName, x.driverPhone, x.plate);
-      }
-    };
-    loadExternal();
+    const unsub = subscribeActiveReservations(setReservations);
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
-      if (e.key.includes("getdriver.reservations.v1")) loadExternal();
       if (e.key.includes("getdriver.fleet.driverWallets")) {
         ensureWalletsForAllRosterDrivers();
         setWalletRev((x) => x + 1);
@@ -128,15 +107,38 @@ export default function DriversPage() {
     };
     window.addEventListener("storage", onStorage);
     const onFocus = () => {
-      loadExternal();
       ensureWalletsForAllRosterDrivers();
     };
     window.addEventListener("focus", onFocus);
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, []);
+
+  React.useEffect(() => {
+    const rows = reservations
+      .filter((r) => r.status === "Đã điều xe")
+      .filter((r) => (r.assignedExternalPriceVnd ?? 0) > 0 || Boolean(r.assignedSupplierId))
+      .map((r): ExternalDispatchRow => ({
+        code: r.code,
+        driverName: r.assignedDriver ?? "—",
+        driverPhone: r.assignedDriverPhone ?? "—",
+        plate: r.assignedVehiclePlate ?? "—",
+        tripDate: r.date,
+        tripTime: r.time,
+        customerName: r.customerName,
+        itinerary: r.itinerary,
+      }));
+    setExternalRows(rows);
+    for (const x of rows) {
+      if (x.driverName === "—") continue;
+      if (x.driverPhone === "—") continue;
+      if (x.plate === "—") continue;
+      ensureWalletForExternalDispatch(x.driverName, x.driverPhone, x.plate);
+    }
+  }, [reservations]);
 
   const internalCount = drivers.filter((d) => d.type === "internal").length;
   const externalCount = drivers.filter((d) => d.type === "external").length;
@@ -1143,14 +1145,18 @@ function tripKey(dateDmy: string, timeHm: string) {
 }
 
 function ExternalBookingDetails({ code }: { code: string }) {
-  const [row, setRow] = React.useState<ReturnType<typeof listActiveReservations>[number] | null>(
-    null,
-  );
+  const [row, setRow] = React.useState<Reservation | null>(null);
 
   React.useEffect(() => {
-    ensureReservationStore();
-    const found = listActiveReservations().find((r) => r.code === code) ?? null;
-    setRow(found);
+    let cancelled = false;
+    void (async () => {
+      const found = await getReservationByCode(code);
+      if (cancelled) return;
+      setRow(found);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [code]);
 
   if (!row) {

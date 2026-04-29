@@ -6,10 +6,8 @@ export type Itinerary = {
 
 const KEY = "getdriver.data.itineraries.v1";
 
-const SEED: Itinerary[] = [
-  { id: "IT-001", name: "TPHCM → Vũng Tàu", createdAt: Date.now() - 1000 * 60 * 60 * 24 },
-  { id: "IT-002", name: "TPHCM → Đà Lạt", createdAt: Date.now() - 1000 * 60 * 60 * 20 },
-];
+// GO LIVE: no demo seed
+const SEED: Itinerary[] = [];
 
 function safeParse(raw: string | null): Itinerary[] | null {
   if (!raw) return null;

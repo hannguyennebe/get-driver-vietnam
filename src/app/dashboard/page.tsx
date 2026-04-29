@@ -2,15 +2,7 @@
 
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
-import {
-  ensureCancelledReservationStore,
-  ensureReservationStore,
-  listActiveReservations,
-  listCancelledReservations,
-  cancelFromCalendarTrip,
-  cancelReservation,
-} from "@/lib/reservations/reservationStore";
-import { ensureTripsStore, listTrips } from "@/lib/calendar/tripsStore";
+import { ensureTripsStore, listTrips, deleteTrip } from "@/lib/calendar/tripsStore";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Pencil } from "lucide-react";
 import {
@@ -20,6 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  subscribeActiveReservations,
+  subscribeCancelledReservations,
+  cancelReservationFirestore,
+} from "@/lib/reservations/reservationsFirestore";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -59,6 +56,8 @@ export default function DashboardPage() {
     note?: string;
     thuHoVnd?: number;
   }>>([]);
+  const [activeReservations, setActiveReservations] = React.useState<any[]>([]);
+  const [cancelledReservations, setCancelledReservations] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     // Keep in sync with user's local timezone date (realtime; flips at midnight)
@@ -69,13 +68,11 @@ export default function DashboardPage() {
   }, []);
 
   React.useEffect(() => {
-    ensureReservationStore();
-    ensureCancelledReservationStore();
     ensureTripsStore();
 
     const load = () => {
-      const active = listActiveReservations();
-      const cancelled = listCancelledReservations();
+      const active = activeReservations as any[];
+      const cancelled = cancelledReservations as any[];
       const trips = listTrips();
 
       const cancelledCodes = new Set(cancelled.map((x) => x.code));
@@ -175,7 +172,6 @@ export default function DashboardPage() {
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
-      if (e.key.includes("getdriver.reservations")) load();
       if (e.key.includes("getdriver.calendar.trips")) load();
     };
     window.addEventListener("storage", onStorage);
@@ -185,7 +181,18 @@ export default function DashboardPage() {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
     };
-  }, [todayIso]);
+  }, [todayIso, activeReservations, cancelledReservations]);
+
+  React.useEffect(() => {
+    const unsubA = subscribeActiveReservations((rows) => setActiveReservations(rows as any));
+    const unsubC = subscribeCancelledReservations((rows) =>
+      setCancelledReservations(rows as any),
+    );
+    return () => {
+      unsubA();
+      unsubC();
+    };
+  }, []);
 
   return (
     <AppShell>
@@ -258,16 +265,9 @@ export default function DashboardPage() {
                   trip={t}
                   onCancelConfirmed={() => {
                     if (t.kind === "reservation") {
-                      cancelReservation(t.id, { cancelledFrom: "reservation" });
+                      void cancelReservationFirestore(t.id, { cancelledFrom: "reservation" });
                     } else {
-                      cancelFromCalendarTrip({
-                        code: t.id,
-                        dateDmy: isoToDmy(todayIso),
-                        time: t.time,
-                        customerName: t.customer,
-                        pickup: t.from,
-                        dropoff: t.to,
-                      });
+                      deleteTrip(t.id);
                     }
                   }}
                   onEditBooking={() =>

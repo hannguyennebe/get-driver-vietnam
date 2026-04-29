@@ -12,7 +12,8 @@ import {
   type CashbookEntry,
   type CashbookSourceId,
 } from "@/lib/finance/cashbookStore";
-import { ensureReservationStore, listActiveReservations } from "@/lib/reservations/reservationStore";
+import { type Reservation } from "@/lib/reservations/reservationStore";
+import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 import { ensureApStore, listExpenses, listPayments } from "@/lib/finance/apStore";
 import { ensurePartnersStore, getPartners } from "@/lib/data/partnersStore";
 import {
@@ -61,6 +62,7 @@ export default function FinanceSoThuChiPage() {
     actualVnd: 0,
     expectedVnd: 0,
   });
+  const [reservations, setReservations] = React.useState<Reservation[]>([]);
 
   const load = React.useCallback(() => {
     ensureCashbookStore();
@@ -84,7 +86,6 @@ export default function FinanceSoThuChiPage() {
     });
 
     // Cashflow summary blocks (VND)
-    ensureReservationStore();
     ensureApStore();
     ensurePartnersStore();
     ensureOperatingExpensesStore();
@@ -112,7 +113,7 @@ export default function FinanceSoThuChiPage() {
     const partners = getPartners();
     const taById = new Map(partners.travelAgents.map((t) => [t.id, t] as const));
 
-    const dueReceivablesVnd = listActiveReservations()
+    const dueReceivablesVnd = reservations
       .filter((r) => r.currency === "VND" && r.paymentType !== "Ví tài xế")
       .filter((r) => {
         const due = reservationDueIso(r, taById);
@@ -137,10 +138,11 @@ export default function FinanceSoThuChiPage() {
     }));
     out.sort((a, b) => tripKey(b.date, b.time) - tripKey(a.date, a.time));
     setRows(out);
-  }, []);
+  }, [reservations]);
 
   React.useEffect(() => {
     load();
+    const unsub = subscribeActiveReservations(setReservations);
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
       if (
@@ -156,6 +158,7 @@ export default function FinanceSoThuChiPage() {
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, [load]);
 
@@ -299,6 +302,7 @@ export default function FinanceSoThuChiPage() {
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <MonthlyInOutChart rows={rows} />
             <ExpenseDonutCard
+              reservations={reservations}
               year={expenseSel.year}
               month={expenseSel.month}
               onYearChange={(year) => setExpenseSel((s) => ({ ...s, year }))}
@@ -689,11 +693,13 @@ function MonthlyInOutChart({ rows }: { rows: CashflowRow[] }) {
 }
 
 function ExpenseDonutCard({
+  reservations,
   year,
   month,
   onMonthChange,
   onYearChange,
 }: {
+  reservations: Reservation[];
   year: number;
   month: number;
   onMonthChange: (m: number) => void;
@@ -709,7 +715,7 @@ function ExpenseDonutCard({
     const mk = monthKey(year, month);
 
     // 1) Chi gọi xe ngoài: tổng giá thuê ngoài theo tháng ngày đi (khoản phải thanh toán + công nợ phải thanh toán)
-    const extHireVnd = listActiveReservations()
+    const extHireVnd = reservations
       .filter((r) => dmyMonthKey(r.date) === mk)
       .reduce((s, r) => s + (Number(r.assignedExternalPriceVnd ?? 0) || 0), 0);
 
@@ -757,7 +763,7 @@ function ExpenseDonutCard({
 
     const total = items.reduce((s, x) => s + x.value, 0);
     return { items, total };
-  }, [year, month]);
+  }, [reservations, year, month]);
 
   const size = 120;
   const stroke = 14;

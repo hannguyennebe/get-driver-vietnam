@@ -5,9 +5,6 @@ import { AppShell } from "@/components/app/AppShell";
 import { Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  ensureReservationStore,
-  listActiveReservations,
-  updateReservation,
   type Reservation,
 } from "@/lib/reservations/reservationStore";
 import { useRouter } from "next/navigation";
@@ -27,6 +24,7 @@ import {
   ensureWalletForRosterDriver,
 } from "@/lib/fleet/driverWalletStore";
 import { useSearchParams } from "next/navigation";
+import { patchReservation, subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 
 export default function DispatchPage() {
   return (
@@ -71,33 +69,32 @@ function DispatchInner() {
   });
 
   React.useEffect(() => {
-    ensureReservationStore();
     ensureDriverStore();
     ensureVehicleStore();
     ensurePartnersStore();
 
-    const load = () => {
-      setOrders(listActiveReservations());
+    const unsub = subscribeActiveReservations(setOrders);
+    setDrivers(listDrivers());
+    setVehicles(listVehicles());
+    setSuppliers(listSuppliers());
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key.includes("getdriver.fleet.drivers")) setDrivers(listDrivers());
+      if (e.key.includes("getdriver.fleet.vehicles")) setVehicles(listVehicles());
+      if (e.key.includes("getdriver.data.partners")) setSuppliers(listSuppliers());
+    };
+    window.addEventListener("storage", onStorage);
+    const onFocus = () => {
       setDrivers(listDrivers());
       setVehicles(listVehicles());
       setSuppliers(listSuppliers());
     };
-
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.reservations")) load();
-      if (e.key.includes("getdriver.fleet.drivers")) load();
-      if (e.key.includes("getdriver.fleet.vehicles")) load();
-      if (e.key.includes("getdriver.data.partners")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
     window.addEventListener("focus", onFocus);
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, []);
 
@@ -454,31 +451,32 @@ function DispatchInner() {
                         (x) => x.employeeCode === selectedDriverCode,
                       );
                       if (!d) return;
-                      updateReservation(order.code, {
+                      void patchReservation(order.code, {
                         status: "Đã điều xe",
                         assignedDriver: d.name,
                         assignedDriverPhone: d.phone,
                         assignedVehiclePlate: selectedPlate,
-                        assignedExternalPriceVnd: undefined,
-                      });
+                        assignedExternalPriceVnd: null,
+                        assignedSupplierId: null,
+                        assignedSupplierPaymentType: null,
+                      } as any);
                       ensureWalletForRosterDriver(d.employeeCode, d.name);
                     } else {
                       const price = Number(extForm.priceVnd.replace(/[^\d]/g, ""));
                       const nm = extForm.name.trim();
                       const ph = extForm.phone.trim();
                       const pl = extForm.plate.trim();
-                      updateReservation(order.code, {
+                      void patchReservation(order.code, {
                         status: "Đã điều xe",
                         assignedDriver: nm,
                         assignedDriverPhone: ph,
                         assignedVehiclePlate: pl,
-                        assignedExternalPriceVnd: Number.isFinite(price) ? price : undefined,
-                        assignedSupplierId: extForm.supplierId || undefined,
-                        assignedSupplierPaymentType: extForm.supplierPaymentType || undefined,
-                      });
+                        assignedExternalPriceVnd: Number.isFinite(price) ? price : null,
+                        assignedSupplierId: extForm.supplierId || null,
+                        assignedSupplierPaymentType: extForm.supplierPaymentType || null,
+                      } as any);
                       ensureWalletForExternalDispatch(nm, ph, pl);
                     }
-                    setOrders(listActiveReservations());
                     setOpen(false);
                   }}
                 >

@@ -6,12 +6,8 @@ export type VehicleType = {
 
 const KEY = "getdriver.data.vehicle-types.v1";
 
-const SEED: VehicleType[] = [
-  { id: "VT-001", name: "Xe 4 chỗ", createdAt: Date.now() - 1000 * 60 * 60 * 24 },
-  { id: "VT-002", name: "Xe 7 chỗ", createdAt: Date.now() - 1000 * 60 * 60 * 20 },
-  { id: "VT-003", name: "Xe 16 chỗ", createdAt: Date.now() - 1000 * 60 * 60 * 16 },
-  { id: "VT-004", name: "Xe 29 chỗ", createdAt: Date.now() - 1000 * 60 * 60 * 12 },
-];
+// GO LIVE: no demo seed
+const SEED: VehicleType[] = [];
 
 function safeParse(raw: string | null): VehicleType[] | null {
   if (!raw) return null;
