@@ -24,3 +24,12 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Hide native date picker icon (we render our own) */
+input.gdvn-date::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  display: none;
+}
+input.gdvn-date::-webkit-inner-spin-button {
+  display: none;
+}

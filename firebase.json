@@ -1,0 +1,19 @@
+{
+  "hosting": {
+    "source": ".",
+    "frameworksBackend": {
+      "region": "asia-southeast1"
+    }
+  },
+  "apphosting": {
+    "backendId": "get-driver-han",
+    "rootDir": "/",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "functions"
+    ]
+  }
+}
