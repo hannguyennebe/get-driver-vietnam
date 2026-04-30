@@ -187,7 +187,12 @@ export default function DataQuotationPage() {
     const rows = lines
       .map((ln) => {
         const parts = String(ln || "").split("|").map((x) => x.trim()).filter(Boolean);
-        const itinerary = parts[0] ?? "";
+        const itRaw = parts[0] ?? "";
+        const itinerary = (() => {
+          const s = String(itRaw || "").trim();
+          const idx = s.indexOf("::");
+          return idx > 0 ? s.slice(idx + 2).trim() : s;
+        })();
         const prices: Record<string, string | number> = {};
         for (const p of parts.slice(1)) {
           const idx = p.indexOf(":");

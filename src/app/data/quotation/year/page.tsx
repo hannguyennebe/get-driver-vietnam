@@ -29,6 +29,7 @@ function YearQuotationInner() {
   const nowY = new Date().getFullYear();
   const initY = params.get("y")?.replace(/[^\d]/g, "").slice(0, 4) || String(nowY);
   const [yearSel, setYearSel] = React.useState(initY);
+  const [rowsKey, setRowsKey] = React.useState(initY);
 
   const sortedVehicleTypes = React.useMemo(() => {
     const vt = vehicleTypes ?? [];
@@ -54,6 +55,59 @@ function YearQuotationInner() {
     [],
   );
 
+  const activeQuote = React.useMemo(() => {
+    const gid = `Q-${yearSel}`;
+    const candidates = (allQuotes ?? [])
+      .filter(Boolean)
+      .filter((q) => String((q as any)?.groupId ?? "") === gid)
+      .filter((q) => String((q as any)?.groupTitle ?? "").toLowerCase().includes("bảng báo giá năm"));
+    candidates.sort((a, b) => (Number((b as any)?.updatedAt ?? 0) || 0) - (Number((a as any)?.updatedAt ?? 0) || 0));
+    return candidates[0] ?? null;
+  }, [allQuotes, yearSel]);
+
+  const missingItinerariesCount = React.useMemo(() => {
+    const ids = new Set((itineraries ?? []).map((x) => x.id));
+    const present = new Set((rows ?? []).map((r) => r.id));
+    let missing = 0;
+    for (const id of ids) if (!present.has(id)) missing++;
+    return missing;
+  }, [itineraries, rows]);
+
+  function parseItineraryCell(raw: string) {
+    const s = String(raw || "").trim();
+    const idx = s.indexOf("::");
+    if (idx > 0) {
+      const id = s.slice(0, idx).trim();
+      const name = s.slice(idx + 2).trim();
+      return { id, name };
+    }
+    return { id: "", name: s };
+  }
+
+  function parseQuotePriceMap(q: Quotation | null) {
+    const map = new Map<string, Record<string, string>>();
+    const lines: string[] = Array.isArray((q as any)?.lines) ? ((q as any).lines as any) : [];
+    const itinByName = new Map<string, string>();
+    for (const it of itineraries ?? []) itinByName.set(String(it.name || "").trim(), it.id);
+    for (const ln of lines) {
+      const parts = String(ln || "").split("|").map((x) => x.trim()).filter(Boolean);
+      const itRaw = parts[0] ?? "";
+      const parsed = parseItineraryCell(itRaw);
+      const id = parsed.id || itinByName.get(parsed.name) || "";
+      if (!id) continue;
+      const rec: Record<string, string> = {};
+      for (const p of parts.slice(1)) {
+        const i = p.indexOf(":");
+        if (i <= 0) continue;
+        const k = p.slice(0, i).trim();
+        const v = p.slice(i + 1).trim();
+        rec[k] = v;
+      }
+      map.set(id, rec);
+    }
+    return map;
+  }
+
   React.useEffect(() => {
     const unsubIt = subscribeItineraries(setItineraries);
     const unsubVt = subscribeVehicleTypes(setVehicleTypes);
@@ -66,18 +120,44 @@ function YearQuotationInner() {
   }, []);
 
   React.useEffect(() => {
+    // Reset local rows when switching year (so we don't mix edits across years).
+    if (rowsKey !== yearSel) {
+      setRowsKey(yearSel);
+      setRows([]);
+    }
+  }, [rowsKey, yearSel]);
+
+  React.useEffect(() => {
     const cols = sortedVehicleTypes ?? [];
     const itins = itineraries ?? [];
     const sorted = [...itins].sort(
       (a, b) => itineraryOrder(a) - itineraryOrder(b) || a.name.localeCompare(b.name, "vi"),
     );
-    const next = sorted.map((it) => {
-      const prices: Record<string, string> = {};
-      for (const c of cols) prices[c.id] = "";
-      return { id: it.id, itinerary: it.name, prices };
+    const quoteMap = parseQuotePriceMap(activeQuote);
+    const vtNameById = new Map(cols.map((c) => [c.id, c.name]));
+    setRows((curr) => {
+      const byId = new Map((curr ?? []).map((r) => [r.id, r]));
+      const next = sorted.map((it) => {
+        const base: Record<string, string> = {};
+        for (const c of cols) base[c.id] = "";
+        const existing = byId.get(it.id);
+        if (existing) {
+          // Preserve any in-progress edits; just update itinerary display name.
+          return { ...existing, itinerary: it.name, prices: { ...base, ...(existing.prices ?? {}) } };
+        }
+        const rec = quoteMap.get(it.id);
+        if (rec) {
+          for (const c of cols) {
+            const label = vtNameById.get(c.id) ?? c.name;
+            const raw = String(rec[label] ?? "").replace(/[^\d]/g, "");
+            base[c.id] = raw;
+          }
+        }
+        return { id: it.id, itinerary: it.name, prices: base };
+      });
+      return next;
     });
-    setRows(next);
-  }, [itineraries, sortedVehicleTypes, itineraryOrder]);
+  }, [activeQuote, itineraries, sortedVehicleTypes, itineraryOrder]);
 
   const groupedRows = React.useMemo(() => {
     const by = { DISTANCE: [] as typeof rows, FLAT_RATE: [] as typeof rows, HOURLY: [] as typeof rows };
@@ -126,6 +206,12 @@ function YearQuotationInner() {
                   })()}
                 </select>
               </div>
+
+              {missingItinerariesCount > 0 ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                  Có {missingItinerariesCount} hành trình mới chưa có trong bảng. Bảng sẽ tự cập nhật sau vài giây; nếu chưa thấy, bạn hãy đổi năm qua lại hoặc refresh trang.
+                </div>
+              ) : null}
 
               <div className="mt-1 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
                 <div className="max-h-[70vh] overflow-auto">
@@ -229,18 +315,19 @@ function YearQuotationInner() {
                       .map((r) => {
                         const itn = String(r.itinerary || "").trim();
                         if (!itn) return "";
+                        const itKey = `${r.id}::${itn}`;
                         const parts = sortedVehicleTypes.map((c) => {
                           const raw = r.prices?.[c.id] ?? "";
                           const v = raw ? Number(raw).toLocaleString("vi-VN") : "—";
                           return `${c.name}: ${v}`;
                         });
-                        return `${itn} | ${parts.join(" | ")}`;
+                        return `${itKey} | ${parts.join(" | ")}`;
                       })
                       .filter(Boolean);
 
                     setSaving(true);
                     try {
-                      const id = generateQuotationId(allQuotes.map((x) => x.id));
+                      const id = String((activeQuote as any)?.id ?? "").trim() || generateQuotationId(allQuotes.map((x) => x.id));
                       void upsertQuotationFs({
                         id,
                         groupId,
