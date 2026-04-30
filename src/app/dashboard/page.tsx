@@ -200,37 +200,37 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="flex gap-4 overflow-x-auto pb-1">
+          <div className="grid w-full grid-cols-1 gap-4 pb-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <KpiCard
               title="Tổng Số Chuyến Hôm Nay"
               value={stats.today.toLocaleString("vi-VN")}
               tone="peach"
-              className="w-[260px] shrink-0"
+              className="min-w-0"
             />
             <KpiCard
               title="Tổng Số Chuyến Ngày Mai"
               value={stats.tomorrow.toLocaleString("vi-VN")}
               tone="peach2"
-              className="w-[260px] shrink-0"
+              className="min-w-0"
             />
             <KpiCard
               title="Tổng Số Chuyến Trong Tháng"
               value={stats.monthTotal.toLocaleString("vi-VN")}
               tone="gray"
-              className="w-[260px] shrink-0"
+              className="min-w-0"
             />
             <KpiCard
               title="Tổng Chuyến Cancellation Trong Tháng"
               value={stats.monthCancelled.toLocaleString("vi-VN")}
               tone="peach2"
-              className="w-[260px] shrink-0"
+              className="min-w-0"
             />
             <DonutCard
               title="Tỷ lệ tổng số chuyến"
               executed={stats.donut.executed}
               cancelled={stats.donut.cancelled}
               reservation={stats.donut.reservation}
-              className="w-[360px] shrink-0"
+              className="min-w-0"
             />
           </div>
 
@@ -331,9 +331,13 @@ function KpiCard({
         ? "bg-[#F7E7DE]"
         : "bg-[#F6E1D6]";
   return (
-    <div className={`rounded-xl p-5 shadow-sm ${bg} ${className ?? ""}`}>
-      <div className="text-xs text-zinc-600">{title}</div>
-      <div className="mt-3 text-2xl font-semibold text-zinc-900">{value}</div>
+    <div
+      className={`flex h-full min-w-0 flex-col rounded-xl p-5 shadow-sm ${bg} ${className ?? ""}`}
+    >
+      <div className="text-xs leading-snug text-zinc-600 dark:text-zinc-400">{title}</div>
+      <div className="mt-3 text-2xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
+        {value}
+      </div>
     </div>
   );
 }
@@ -367,9 +371,11 @@ function DonutCard({
   let offset = 0;
 
   return (
-    <div className={`rounded-xl bg-[#F6E1D6] p-5 shadow-sm ${className ?? ""}`}>
-      <div className="text-xs text-zinc-600">{title}</div>
-      <div className="mt-3 flex items-center justify-between gap-4">
+    <div
+      className={`flex h-full min-w-0 flex-col rounded-xl bg-[#F6E1D6] p-5 shadow-sm dark:bg-[#3d2a22]/80 ${className ?? ""}`}
+    >
+      <div className="text-xs text-zinc-600 dark:text-zinc-300">{title}</div>
+      <div className="mt-3 flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 xl:flex-col xl:items-center">
         <div className="relative h-[112px] w-[112px] shrink-0">
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
             <circle
@@ -411,7 +417,7 @@ function DonutCard({
           </div>
         </div>
 
-        <div className="min-w-0 flex-1 space-y-2 text-xs text-zinc-700">
+        <div className="w-full min-w-0 flex-1 space-y-2 text-xs text-zinc-700 dark:text-zinc-200 sm:w-auto xl:w-full">
           {segs.map((s) => (
             <div key={s.label} className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
