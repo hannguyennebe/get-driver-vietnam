@@ -79,6 +79,7 @@ export default function DriversPage() {
   const [openEdit, setOpenEdit] = React.useState(false);
   const [editKey, setEditKey] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
   const [form, setForm] = React.useState({
     employeeCode: "",
@@ -409,7 +410,8 @@ export default function DriversPage() {
 
               <Button
                 className="w-full"
-                onClick={() => {
+                disabled={saving}
+                onClick={async () => {
                   setError(null);
                   const name = form.name.trim();
                   const phone = form.phone.trim();
@@ -432,15 +434,32 @@ export default function DriversPage() {
                   try {
                     const dupCode = drivers.some((d) => d.employeeCode === next.employeeCode);
                     if (dupCode) throw new Error("duplicate_employee_code");
-                    void upsertDriverFs(next);
-                    void ensureWalletForRosterDriverFs(next.employeeCode, next.name);
+                    setSaving(true);
+                    await upsertDriverFs(next);
+                    // Best-effort: wallet creation may be blocked by perms; driver creation should still succeed.
+                    try {
+                      await ensureWalletForRosterDriverFs(next.employeeCode, next.name);
+                    } catch {
+                      // ignore
+                    }
                     setOpenAdd(false);
                   } catch (e) {
-                    setError("Số điện thoại hoặc mã nhân viên đã tồn tại.");
+                    const msg = String((e as any)?.message ?? "");
+                    if (msg.includes("permission") || msg.includes("PERMISSION_DENIED")) {
+                      setError("Bạn không có quyền tạo tài xế (PERMISSION_DENIED).");
+                    } else if (msg.includes("missing_employee_code")) {
+                      setError("Thiếu mã nhân viên.");
+                    } else if (msg.includes("duplicate_employee_code")) {
+                      setError("Mã nhân viên đã tồn tại.");
+                    } else {
+                      setError("Không thể tạo tài xế. Vui lòng thử lại.");
+                    }
+                  } finally {
+                    setSaving(false);
                   }
                 }}
               >
-                Xác nhận
+                {saving ? "Đang lưu..." : "Xác nhận"}
               </Button>
             </div>
           </DialogContent>
@@ -520,8 +539,8 @@ export default function DriversPage() {
 
               <Button
                 className="w-full"
-                disabled={Boolean(editKey && lock.isReady && !lock.canEdit)}
-                onClick={() => {
+                disabled={saving || Boolean(editKey && lock.isReady && !lock.canEdit)}
+                onClick={async () => {
                   setError(null);
                   if (!editKey) return;
                   if (lock.isReady && !lock.canEdit) return setError(`Dữ liệu đang được sửa bởi ${lock.lockedByName ?? "—"}.`);
@@ -532,17 +551,29 @@ export default function DriversPage() {
 
                   const current = drivers.find((d) => d.employeeCode === editKey);
                   if (!current) return setError("Không tìm thấy tài xế.");
-                  void upsertDriverFs({
-                    ...current,
-                    name,
-                    phone,
-                    licenseType: form.licenseType,
-                    updatedAt: Date.now(),
-                  });
-                  setOpenEdit(false);
+                  try {
+                    setSaving(true);
+                    await upsertDriverFs({
+                      ...current,
+                      name,
+                      phone,
+                      licenseType: form.licenseType,
+                      updatedAt: Date.now(),
+                    });
+                    setOpenEdit(false);
+                  } catch (e) {
+                    const msg = String((e as any)?.message ?? "");
+                    if (msg.includes("permission") || msg.includes("PERMISSION_DENIED")) {
+                      setError("Bạn không có quyền sửa tài xế (PERMISSION_DENIED).");
+                    } else {
+                      setError("Không thể lưu. Vui lòng thử lại.");
+                    }
+                  } finally {
+                    setSaving(false);
+                  }
                 }}
               >
-                Lưu
+                {saving ? "Đang lưu..." : "Lưu"}
               </Button>
             </div>
           </DialogContent>
