@@ -1,6 +1,9 @@
+export type ItineraryPricingModel = "DISTANCE" | "FLAT_RATE" | "HOURLY";
+
 export type Itinerary = {
   id: string;
   name: string;
+  pricingModel?: ItineraryPricingModel;
   createdAt: number;
 };
 

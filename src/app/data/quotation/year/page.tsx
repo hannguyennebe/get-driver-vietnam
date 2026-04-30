@@ -42,6 +42,14 @@ function YearQuotationInner() {
     return [...vt].sort((a, b) => seatsOf(a.name) - seatsOf(b.name) || a.name.localeCompare(b.name, "vi"));
   }, [vehicleTypes]);
 
+  const itineraryOrder = React.useCallback((it: Itinerary) => {
+    const m = String((it as any)?.pricingModel ?? "DISTANCE").toUpperCase();
+    if (m === "DISTANCE") return 0;
+    if (m === "FLAT_RATE" || m === "FLATRATE") return 1;
+    if (m === "HOURLY") return 2;
+    return 9;
+  }, []);
+
   const [rows, setRows] = React.useState<Array<{ id: string; itinerary: string; prices: Record<string, string> }>>(
     [],
   );
@@ -60,13 +68,28 @@ function YearQuotationInner() {
   React.useEffect(() => {
     const cols = sortedVehicleTypes ?? [];
     const itins = itineraries ?? [];
-    const next = itins.map((it) => {
+    const sorted = [...itins].sort(
+      (a, b) => itineraryOrder(a) - itineraryOrder(b) || a.name.localeCompare(b.name, "vi"),
+    );
+    const next = sorted.map((it) => {
       const prices: Record<string, string> = {};
       for (const c of cols) prices[c.id] = "";
       return { id: it.id, itinerary: it.name, prices };
     });
     setRows(next);
-  }, [itineraries, sortedVehicleTypes]);
+  }, [itineraries, sortedVehicleTypes, itineraryOrder]);
+
+  const groupedRows = React.useMemo(() => {
+    const by = { DISTANCE: [] as typeof rows, FLAT_RATE: [] as typeof rows, HOURLY: [] as typeof rows };
+    const byId = new Map((itineraries ?? []).map((it) => [it.id, String((it as any)?.pricingModel ?? "DISTANCE").toUpperCase()]));
+    for (const r of rows ?? []) {
+      const m = byId.get(r.id) ?? "DISTANCE";
+      if (m === "HOURLY") by.HOURLY.push(r);
+      else if (m === "FLAT_RATE" || m === "FLATRATE") by.FLAT_RATE.push(r);
+      else by.DISTANCE.push(r);
+    }
+    return by;
+  }, [rows, itineraries]);
 
   return (
     <AppShell>
@@ -107,55 +130,72 @@ function YearQuotationInner() {
               <div className="mt-1 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
                 <div className="max-h-[70vh] overflow-auto">
                   <div className="min-w-full p-3">
-                    <div className="flex w-max items-start gap-2">
-                      <div className="w-[460px] shrink-0">
-                        <div className="rounded-lg bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-200">
-                          HÀNH TRÌNH
-                        </div>
-                        <div className="mt-2 grid gap-3">
-                          {rows.map((r) => (
-                            <input
-                              key={r.id}
-                              value={r.itinerary}
-                              readOnly
-                              className="h-10 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-[#C79A2B] dark:border-zinc-800 dark:bg-zinc-900/30"
-                            />
-                          ))}
-                        </div>
-                      </div>
-
-                      {(sortedVehicleTypes.length ? sortedVehicleTypes : [{ id: "_", name: "—" } as any]).map(
-                        (c: any) => (
-                          <div key={c.id} className="w-[160px] shrink-0">
-                            <div className="rounded-lg bg-zinc-50 px-3 py-2 text-center text-xs font-semibold text-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-200">
-                              {c.name}
-                            </div>
-                            <div className="mt-2 grid gap-3">
-                              {rows.map((r) => (
-                                <input
-                                  key={`${r.id}:${c.id}`}
-                                  value={sortedVehicleTypes.length ? r.prices?.[c.id] ?? "" : ""}
-                                  readOnly={!sortedVehicleTypes.length}
-                                  inputMode="numeric"
-                                  onChange={(e) => {
-                                    if (!sortedVehicleTypes.length) return;
-                                    const v = e.target.value.replace(/[^\d]/g, "");
-                                    setRows((s) =>
-                                      s.map((x) =>
-                                        x.id === r.id
-                                          ? { ...x, prices: { ...(x.prices ?? {}), [c.id]: v } }
-                                          : x,
-                                      ),
-                                    );
-                                  }}
-                                  className="h-10 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-center text-sm outline-none focus:border-[#C79A2B] dark:border-zinc-800 dark:bg-zinc-900/30"
-                                />
-                              ))}
-                            </div>
+                    {(
+                      [
+                        ["DISTANCE", "DISTANCE"],
+                        ["FLAT_RATE", "FLAT RATE"],
+                        ["HOURLY", "HOURLY"],
+                      ] as const
+                    ).map(([key, label]) => {
+                      const secRows = (groupedRows as any)[key] as typeof rows;
+                      if (!secRows?.length) return null;
+                      return (
+                        <div key={key} className="mb-6">
+                          <div className="mb-2 rounded-lg bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+                            {label}
                           </div>
-                        ),
-                      )}
-                    </div>
+                          <div className="flex w-max items-start gap-2">
+                            <div className="w-[460px] shrink-0">
+                              <div className="rounded-lg bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-200">
+                                HÀNH TRÌNH
+                              </div>
+                              <div className="mt-2 grid gap-3">
+                                {secRows.map((r) => (
+                                  <input
+                                    key={r.id}
+                                    value={r.itinerary}
+                                    readOnly
+                                    className="h-10 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm outline-none focus:border-[#C79A2B] dark:border-zinc-800 dark:bg-zinc-900/30"
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            {(sortedVehicleTypes.length ? sortedVehicleTypes : [{ id: "_", name: "—" } as any]).map(
+                              (c: any) => (
+                                <div key={`${key}:${c.id}`} className="w-[160px] shrink-0">
+                                  <div className="rounded-lg bg-zinc-50 px-3 py-2 text-center text-xs font-semibold text-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-200">
+                                    {c.name}
+                                  </div>
+                                  <div className="mt-2 grid gap-3">
+                                    {secRows.map((r) => (
+                                      <input
+                                        key={`${r.id}:${c.id}`}
+                                        value={sortedVehicleTypes.length ? r.prices?.[c.id] ?? "" : ""}
+                                        readOnly={!sortedVehicleTypes.length}
+                                        inputMode="numeric"
+                                        onChange={(e) => {
+                                          if (!sortedVehicleTypes.length) return;
+                                          const v = e.target.value.replace(/[^\d]/g, "");
+                                          setRows((s) =>
+                                            s.map((x) =>
+                                              x.id === r.id
+                                                ? { ...x, prices: { ...(x.prices ?? {}), [c.id]: v } }
+                                                : x,
+                                            ),
+                                          );
+                                        }}
+                                        className="h-10 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-center text-sm outline-none focus:border-[#C79A2B] dark:border-zinc-800 dark:bg-zinc-900/30"
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/app/AppShell";
 import {
   generateItineraryId,
   type Itinerary,
+  type ItineraryPricingModel,
 } from "@/lib/data/itineraryStore";
 import {
   generateVehicleTypeId,
@@ -36,6 +37,7 @@ export default function DataItineraryPage() {
   const [open, setOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [name, setName] = React.useState("");
+  const [pricingModel, setPricingModel] = React.useState<ItineraryPricingModel>("DISTANCE");
   const [error, setError] = React.useState<string | null>(null);
 
   const [typeRows, setTypeRows] = React.useState<VehicleType[]>([]);
@@ -73,6 +75,7 @@ export default function DataItineraryPage() {
                 setError(null);
                 setEditingId(null);
                 setName("");
+                setPricingModel("DISTANCE");
                 setOpen(true);
               }}
             >
@@ -85,6 +88,7 @@ export default function DataItineraryPage() {
               <thead className="bg-zinc-100 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
                 <tr>
                   <th className="px-3 py-2">Hành Trình</th>
+                  <th className="px-3 py-2">Loại giá</th>
                   <th className="px-3 py-2 text-right">Hành động</th>
                 </tr>
               </thead>
@@ -92,6 +96,9 @@ export default function DataItineraryPage() {
                 {rows.map((r) => (
                   <tr key={r.id} className="bg-white dark:bg-zinc-950">
                     <td className="px-3 py-2 font-medium">{r.name}</td>
+                    <td className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300">
+                      {String(r.pricingModel || "DISTANCE").replace("_", " ")}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <div className="inline-flex items-center gap-1">
                         <button
@@ -102,6 +109,7 @@ export default function DataItineraryPage() {
                             setError(null);
                             setEditingId(r.id);
                             setName(r.name);
+                            setPricingModel((r.pricingModel as any) || "DISTANCE");
                             setOpen(true);
                           }}
                         >
@@ -125,7 +133,7 @@ export default function DataItineraryPage() {
                 {rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={2}
+                      colSpan={3}
                       className="px-3 py-8 text-center text-zinc-500"
                     >
                       Chưa có hành trình.
@@ -232,6 +240,19 @@ export default function DataItineraryPage() {
               <Input value={name} onChange={(e) => setName(e.target.value)} />
             </div>
 
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Loại giá</label>
+              <select
+                className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-950"
+                value={pricingModel}
+                onChange={(e) => setPricingModel(e.target.value as ItineraryPricingModel)}
+              >
+                <option value="DISTANCE">DISTANCE</option>
+                <option value="FLAT_RATE">FLAT RATE</option>
+                <option value="HOURLY">HOURLY</option>
+              </select>
+            </div>
+
             {error ? (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {error}
@@ -253,11 +274,13 @@ export default function DataItineraryPage() {
 
                   const id =
                     editingId ?? generateItineraryId(rows.map((x) => x.id));
+                  const existing = rows.find((x) => x.id === id);
 
                   void upsertItineraryFs({
                     id,
                     name: name.trim(),
-                    createdAt: Date.now(),
+                    pricingModel,
+                    createdAt: existing?.createdAt ?? Date.now(),
                   });
                   setOpen(false);
                 }}
