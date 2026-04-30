@@ -60,6 +60,7 @@ function formatPhone84(raw: string) {
 export default function AdminPage() {
   const router = useRouter();
   const [users, setUsers] = React.useState<AdminUser[]>([]);
+  const [cleanupBusy, setCleanupBusy] = React.useState(false);
   const [openCreate, setOpenCreate] = React.useState(false);
   const [openPerms, setOpenPerms] = React.useState(false);
   const [openEdit, setOpenEdit] = React.useState(false);
@@ -123,6 +124,25 @@ export default function AdminPage() {
     session?.role === "Admin" || Boolean(session?.permissions?.view?.includes("admin.info"));
   const canManage =
     session?.role === "Admin" || Boolean(session?.permissions?.view?.includes("admin.manage"));
+
+  async function cleanupOrphanDriverWallets() {
+    setCleanupBusy(true);
+    try {
+      const res = await fetch("/api/admin/cleanup-orphan-driver-wallets", { method: "POST" });
+      const data = (await res.json()) as any;
+      if (!res.ok || !data?.ok) {
+        const msg = String(data?.error ?? "failed");
+        alert(`Không dọn được ví mồ côi. (${msg})`);
+        return;
+      }
+      const deleted = Array.isArray(data?.deletedKeys) ? data.deletedKeys.length : 0;
+      alert(`Đã xoá ${deleted} ví mồ côi.`);
+    } catch (e) {
+      alert(`Không dọn được ví mồ côi. (${String((e as any)?.message ?? "unknown")})`);
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
 
   async function authHeader() {
     const auth = await initFirebaseAuth();
@@ -284,12 +304,30 @@ export default function AdminPage() {
               Quản lý tài khoản người dùng
             </p>
           </div>
-          <Button
-            className="h-9 px-3 text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
-            onClick={openCreateDialog}
-          >
-            + Tạo User
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {session?.role === "Admin" ? (
+              <Button
+                variant="secondary"
+                className="h-9"
+                disabled={cleanupBusy}
+                onClick={() => {
+                  const ok = window.confirm(
+                    "Xoá toàn bộ ví tài xế mồ côi (không còn driver tương ứng)? Hành động không thể hoàn tác.",
+                  );
+                  if (!ok) return;
+                  void cleanupOrphanDriverWallets();
+                }}
+              >
+                {cleanupBusy ? "Đang dọn ví…" : "Dọn ví mồ côi"}
+              </Button>
+            ) : null}
+            <Button
+              className="h-9 px-3 text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
+              onClick={openCreateDialog}
+            >
+              + Tạo User
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
