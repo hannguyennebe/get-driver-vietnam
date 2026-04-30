@@ -129,8 +129,9 @@ export default function LoginPage() {
         }
       }
 
-      const token = await signedInUser?.getIdToken();
-      const tokenResult = await signedInUser?.getIdTokenResult();
+      // Force refresh to pick up latest custom claims (role/perms) immediately.
+      const token = await signedInUser?.getIdToken(true);
+      const tokenResult = await signedInUser?.getIdTokenResult(true);
       const role = (tokenResult?.claims?.role as UserRole | undefined) ?? "Admin";
       const perms = (tokenResult?.claims as any)?.perms as
         | { view?: string[]; edit?: string[] }

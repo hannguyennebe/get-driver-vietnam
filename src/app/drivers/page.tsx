@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
 import { useDocLock } from "@/lib/firestore/useDocLock";
+import { tryGetFirebaseAuth } from "@/lib/firebase/client";
 
 type ExternalDispatchRow = {
   code: string;
@@ -89,6 +90,24 @@ export default function DriversPage() {
   });
 
   const lock = useDocLock({ resource: "drivers", resourceId: openEdit ? editKey : null, enabled: true });
+
+  async function forceRefreshClaims() {
+    const auth = tryGetFirebaseAuth();
+    const u = auth?.currentUser ?? null;
+    if (!u) return;
+    try {
+      await u.getIdToken(true);
+      await u.getIdTokenResult(true);
+    } catch {
+      // ignore
+    }
+  }
+
+  function isPermissionDenied(err: unknown) {
+    const msg = String((err as any)?.message ?? "");
+    const code = String((err as any)?.code ?? "");
+    return msg.includes("PERMISSION_DENIED") || msg.toLowerCase().includes("permission") || code.includes("permission");
+  }
 
   React.useEffect(() => {
     const unsubDrivers = subscribeDrivers(setDrivers);
@@ -435,7 +454,17 @@ export default function DriversPage() {
                     const dupCode = drivers.some((d) => d.employeeCode === next.employeeCode);
                     if (dupCode) throw new Error("duplicate_employee_code");
                     setSaving(true);
-                    await upsertDriverFs(next);
+                    try {
+                      await upsertDriverFs(next);
+                    } catch (e) {
+                      // If claims just changed (e.g. newly granted Admin), refresh token and retry once.
+                      if (isPermissionDenied(e)) {
+                        await forceRefreshClaims();
+                        await upsertDriverFs(next);
+                      } else {
+                        throw e;
+                      }
+                    }
                     // Best-effort: wallet creation may be blocked by perms; driver creation should still succeed.
                     try {
                       await ensureWalletForRosterDriverFs(next.employeeCode, next.name);
@@ -445,7 +474,7 @@ export default function DriversPage() {
                     setOpenAdd(false);
                   } catch (e) {
                     const msg = String((e as any)?.message ?? "");
-                    if (msg.includes("permission") || msg.includes("PERMISSION_DENIED")) {
+                    if (isPermissionDenied(e)) {
                       setError("Bạn không có quyền tạo tài xế (PERMISSION_DENIED).");
                     } else if (msg.includes("missing_employee_code")) {
                       setError("Thiếu mã nhân viên.");
@@ -553,17 +582,26 @@ export default function DriversPage() {
                   if (!current) return setError("Không tìm thấy tài xế.");
                   try {
                     setSaving(true);
-                    await upsertDriverFs({
+                    const payload = {
                       ...current,
                       name,
                       phone,
                       licenseType: form.licenseType,
                       updatedAt: Date.now(),
-                    });
+                    };
+                    try {
+                      await upsertDriverFs(payload);
+                    } catch (e) {
+                      if (isPermissionDenied(e)) {
+                        await forceRefreshClaims();
+                        await upsertDriverFs(payload);
+                      } else {
+                        throw e;
+                      }
+                    }
                     setOpenEdit(false);
                   } catch (e) {
-                    const msg = String((e as any)?.message ?? "");
-                    if (msg.includes("permission") || msg.includes("PERMISSION_DENIED")) {
+                    if (isPermissionDenied(e)) {
                       setError("Bạn không có quyền sửa tài xế (PERMISSION_DENIED).");
                     } else {
                       setError("Không thể lưu. Vui lòng thử lại.");
