@@ -489,7 +489,7 @@ function TripRow({
   return (
     <div
       onDoubleClick={onOpen}
-      className="w-[calc((100vw-4rem-420px-1.5rem-12px)/5)] min-w-[240px] max-w-[340px] shrink-0 rounded-lg border border-zinc-200 bg-white p-3 text-left text-sm shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900/40"
+      className="w-[min(340px,80vw)] sm:w-[300px] lg:w-[320px] xl:w-[280px] shrink-0 rounded-lg border border-zinc-200 bg-white p-3 text-left text-sm shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900/40"
       title="Double click để xem chi tiết"
       role="button"
       tabIndex={0}

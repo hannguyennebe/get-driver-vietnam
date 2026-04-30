@@ -604,7 +604,7 @@ function ScheduleCard({
   };
 
   return (
-    <div className="w-[calc((100vw-3rem)/5)] min-w-[280px] max-w-[420px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="w-[min(420px,85vw)] sm:w-[360px] lg:w-[380px] xl:w-[320px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex items-center justify-between gap-2 bg-[#E9F4FF] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="rounded bg-[#D7ECFF] px-2 py-1 text-[10px] font-semibold text-[#0B79B8]">
