@@ -95,7 +95,8 @@ function ReservationNewInner() {
   React.useEffect(() => {
     setCreatedAt(new Date());
     const s = typeof window !== "undefined" ? getDemoSession() : null;
-    setSales(s?.username ?? "—");
+    const me = getCurrentUserIdentity();
+    setSales(me?.name ?? s?.username ?? "—");
 
     const code = searchParams.get("code");
     let cancelled = false;

@@ -562,6 +562,7 @@ function ScheduleCard({
 }) {
   const dispatched = trip.kind === "reservation" && trip.reservationStatus === "Đã điều xe";
   const [copied, setCopied] = React.useState(false);
+  const [copiedAll, setCopiedAll] = React.useState(false);
   const [openCancel, setOpenCancel] = React.useState(false);
 
   const copyDriverInfo = async () => {
@@ -579,6 +580,32 @@ function ScheduleCard({
     }
   };
 
+  const copyAllInfo = async () => {
+    const lines = [
+      `RESERVATION ${trip.id}`,
+      `Khách hàng: ${trip.customer || "—"}`,
+      `Sales: ${trip.sales || "—"}`,
+      `Giờ đón: ${trip.time || "—"}`,
+      trip.itinerary ? `Hành trình: ${trip.itinerary}` : null,
+      `Đón: ${trip.from || "—"}`,
+      `Trả: ${trip.to || "—"}`,
+      `Thu hộ: ${Math.round(trip.thuHoVnd ?? 0).toLocaleString("vi-VN")} đ`,
+      `Ghi chú: ${trip.note?.trim() ? trip.note.trim() : "—"}`,
+      "",
+      `Tài xế: ${trip.driverName || "—"}`,
+      `SĐT: ${trip.driverPhone || "—"}`,
+      `Loại xe: ${trip.vehicleType || "—"}`,
+      `Biển số: ${trip.vehiclePlate || "—"}`,
+    ].filter((x): x is string => Boolean(x));
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopiedAll(true);
+      window.setTimeout(() => setCopiedAll(false), 5000);
+    } catch {
+      // ignore (no toast/alert requested)
+    }
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex items-center justify-between gap-2 bg-[#E9F4FF] px-3 py-2">
@@ -591,6 +618,19 @@ function ScheduleCard({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 shadow-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            onClick={copyAllInfo}
+            title="Copy toàn bộ thông tin"
+            aria-label="Copy toàn bộ thông tin"
+          >
+            {copiedAll ? (
+              <Check className="h-4 w-4 text-emerald-600" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </button>
           <button
             type="button"
             className="rounded-md border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
