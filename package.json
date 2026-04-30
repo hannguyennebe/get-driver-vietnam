@@ -14,6 +14,7 @@
     "create:admin": "node scripts/create-admin.mjs"
   },
   "dependencies": {
+    "@googlemaps/js-api-loader": "^2.0.2",
     "@openfonts/noto-sans_vietnamese": "^1.44.2",
     "@pdf-lib/fontkit": "^1.1.1",
     "@radix-ui/react-checkbox": "^1.3.3",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/google.maps": "^3.64.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

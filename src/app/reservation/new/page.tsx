@@ -30,6 +30,8 @@ import {
   patchReservation,
 } from "@/lib/reservations/reservationsFirestore";
 import { acquireLock, releaseLock, type AcquireLockResult } from "@/lib/firestore/locks";
+import { PlaceAutocompleteInput } from "@/components/maps/PlaceAutocompleteInput";
+import { loadGoogleMaps, hasGoogleMapsKey } from "@/lib/maps/googleMaps";
 
 export default function ReservationNewPage() {
   return (
@@ -91,6 +93,48 @@ function ReservationNewInner() {
     thuHoCurrency: "VND" as Currency,
     note: "",
   });
+
+  const [routeBusy, setRouteBusy] = React.useState(false);
+  const [routeError, setRouteError] = React.useState<string | null>(null);
+
+  const computeDistanceFromGoogle = React.useCallback(
+    async (pickup: string, dropoff: string) => {
+      if (!pickup.trim() || !dropoff.trim()) return;
+      if (!hasGoogleMapsKey()) return;
+      setRouteError(null);
+      setRouteBusy(true);
+      try {
+        const g = await loadGoogleMaps();
+        if (!g) return;
+        const svc = new g.maps.DirectionsService();
+        const res = await svc.route({
+          origin: pickup,
+          destination: dropoff,
+          travelMode: g.maps.TravelMode.DRIVING,
+          provideRouteAlternatives: true,
+          // allow highways/tolls by default; keep options open for fastest car route
+          avoidHighways: false,
+          avoidTolls: false,
+        });
+        const routes = res.routes ?? [];
+        if (!routes.length) throw new Error("no_routes");
+        let bestMeters = Number.POSITIVE_INFINITY;
+        for (const r of routes) {
+          const leg = r.legs?.[0];
+          const meters = Number(leg?.distance?.value ?? NaN);
+          if (Number.isFinite(meters) && meters < bestMeters) bestMeters = meters;
+        }
+        if (!Number.isFinite(bestMeters)) throw new Error("no_distance");
+        const km = Math.max(0, Math.round((bestMeters / 1000) * 10) / 10); // 0.1km precision
+        setForm((s) => ({ ...s, distanceKm: String(km) }));
+      } catch (e: any) {
+        setRouteError("Không thể đo khoảng cách từ Google Maps.");
+      } finally {
+        setRouteBusy(false);
+      }
+    },
+    [],
+  );
 
   React.useEffect(() => {
     setCreatedAt(new Date());
@@ -307,16 +351,38 @@ function ReservationNewInner() {
               </Field>
 
               <Field label="Điểm đón">
-                <Input
-                  value={form.pickup}
-                  onChange={(e) => setForm({ ...form, pickup: e.target.value })}
-                />
+                {hasGoogleMapsKey() ? (
+                  <PlaceAutocompleteInput
+                    value={form.pickup}
+                    onChangeText={(t) => setForm((s) => ({ ...s, pickup: t }))}
+                    onPlaceSelected={(p) => {
+                      void computeDistanceFromGoogle(p.label, form.dropoff);
+                    }}
+                    placeholder="Nhập điểm đón..."
+                  />
+                ) : (
+                  <Input
+                    value={form.pickup}
+                    onChange={(e) => setForm({ ...form, pickup: e.target.value })}
+                  />
+                )}
               </Field>
               <Field label="Điểm Trả">
-                <Input
-                  value={form.dropoff}
-                  onChange={(e) => setForm({ ...form, dropoff: e.target.value })}
-                />
+                {hasGoogleMapsKey() ? (
+                  <PlaceAutocompleteInput
+                    value={form.dropoff}
+                    onChangeText={(t) => setForm((s) => ({ ...s, dropoff: t }))}
+                    onPlaceSelected={(p) => {
+                      void computeDistanceFromGoogle(form.pickup, p.label);
+                    }}
+                    placeholder="Nhập điểm trả..."
+                  />
+                ) : (
+                  <Input
+                    value={form.dropoff}
+                    onChange={(e) => setForm({ ...form, dropoff: e.target.value })}
+                  />
+                )}
               </Field>
               <Field label="Khoản cách (Km)">
                 <Input
@@ -325,6 +391,11 @@ function ReservationNewInner() {
                   inputMode="decimal"
                   placeholder="0"
                 />
+                {routeBusy ? (
+                  <div className="mt-1 text-xs text-zinc-500">Đang đo khoảng cách…</div>
+                ) : routeError ? (
+                  <div className="mt-1 text-xs text-red-600">{routeError}</div>
+                ) : null}
               </Field>
             </div>
 
