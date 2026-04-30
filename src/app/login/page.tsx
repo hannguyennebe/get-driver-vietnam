@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   signInWithEmailAndPassword,
   signOut,
+  updateProfile,
   updatePassword,
   type Auth,
 } from "firebase/auth";
@@ -151,6 +152,25 @@ export default function LoginPage() {
         edit: Array.isArray(perms?.edit) ? perms!.edit! : [],
       };
       setDemoSession({ username: phone, role, permissions, createdAt: Date.now() });
+
+      // Ensure Firebase user has displayName so "Sales" shows staff name (not phone).
+      if (token && firebaseAuth.currentUser) {
+        try {
+          const res = await fetch("/api/admin/users/me", {
+            headers: { authorization: `Bearer ${token}` },
+          });
+          const me = (await res.json().catch(() => null)) as any;
+          const name = String(me?.name ?? "").trim();
+          if (res.ok && name && name !== "—") {
+            const curr = String(firebaseAuth.currentUser.displayName ?? "").trim();
+            if (!curr || curr !== name) {
+              await updateProfile(firebaseAuth.currentUser, { displayName: name });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       // Create a server-verified session cookie (prevents URL-typing bypass).
       if (token) {

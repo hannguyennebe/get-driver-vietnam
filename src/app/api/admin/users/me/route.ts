@@ -23,6 +23,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       uid: decoded.uid,
+      name: user.displayName ?? null,
+      phone: user.phoneNumber ?? null,
+      employeeCode: (decoded as any)?.employeeCode ?? null,
       role: (decoded.role as Role | undefined) ?? "Operator",
       active: !user.disabled,
       permissions: {
