@@ -25,7 +25,7 @@ export function PaymentConfirmDialog(props: {
   defaultCurrency: PaymentCurrency;
   lockCurrencyTo?: PaymentCurrency;
   defaultAmount?: number;
-  onConfirm: (r: PaymentConfirmResult) => void;
+  onConfirm: (r: PaymentConfirmResult) => void | Promise<void>;
 }) {
   const payBtnClass =
     "h-10 rounded-xl px-5 font-semibold text-white shadow-sm " +
@@ -38,6 +38,7 @@ export function PaymentConfirmDialog(props: {
     "hover:from-[#EBCB7A] hover:to-[#B98A1F] " +
     "active:from-[#DDBA5D] active:to-[#A87912] disabled:opacity-60";
   const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
   const [source, setSource] = React.useState<PaymentSourceKind>("CASH");
   const [walletKey, setWalletKey] = React.useState<string>("");
   const [currency, setCurrency] = React.useState<PaymentCurrency>(props.defaultCurrency);
@@ -73,6 +74,7 @@ export function PaymentConfirmDialog(props: {
   React.useEffect(() => {
     if (!props.open) return;
     setError(null);
+    setBusy(false);
     setCurrency(props.lockCurrencyTo ?? props.defaultCurrency);
     setOtherCurrency("");
     setAmount(props.defaultAmount != null ? String(props.defaultAmount) : "");
@@ -263,12 +265,13 @@ export function PaymentConfirmDialog(props: {
           ) : null}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button className={earthBtnClass} onClick={() => props.onOpenChange(false)}>
+            <Button className={earthBtnClass} onClick={() => props.onOpenChange(false)} disabled={busy}>
               Huỷ
             </Button>
             <Button
               className={payBtnClass}
-              onClick={() => {
+              disabled={busy}
+              onClick={async () => {
                 setError(null);
                 const num = Number(String(amount).replace(/[^\d.]/g, ""));
                 if (!Number.isFinite(num) || num <= 0) return setError("Số tiền không hợp lệ.");
@@ -284,11 +287,19 @@ export function PaymentConfirmDialog(props: {
                 if (String(currency).toUpperCase() === "OTHER" && cur.length < 3) {
                   return setError("Mã tiền tệ không hợp lệ.");
                 }
-                props.onConfirm({ sourceId, currency: cur, amount: num });
-                props.onOpenChange(false);
+                setBusy(true);
+                try {
+                  await props.onConfirm({ sourceId, currency: cur, amount: num });
+                  props.onOpenChange(false);
+                } catch (e) {
+                  const msg = String((e as any)?.message ?? e ?? "unknown");
+                  setError(msg || "Không thể ghi nhận thanh toán. Vui lòng thử lại.");
+                } finally {
+                  setBusy(false);
+                }
               }}
             >
-              Xác nhận
+              {busy ? "Đang lưu…" : "Xác nhận"}
             </Button>
           </div>
         </div>

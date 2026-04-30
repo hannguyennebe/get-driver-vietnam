@@ -1209,7 +1209,7 @@ export default function FinanceChiPage() {
         title="Thanh toán khoản chi khác"
         description="Bước 1: chọn nguồn tiền. Bước 2: chọn loại tiền và nhập số tiền."
         defaultCurrency={"VND" as any}
-        onConfirm={(r) => {
+        onConfirm={async (r) => {
           setAddError(null);
           if (!addForm.content.trim()) return setAddError("Vui lòng nhập Nội dung chi.");
           const amount = Math.round(Number(r.amount ?? 0) || 0);
@@ -1219,13 +1219,13 @@ export default function FinanceChiPage() {
             return setAddError("Khoản chi khác hiện chỉ hỗ trợ VND hoặc USD.");
           }
 
-          void addOtherExpenseFs({
+          await addOtherExpenseFs({
             content: addForm.content,
             amount,
             currency: cur as OtherExpenseCurrency,
           });
 
-          void addCashbookEntryFs({
+          await addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: cur,
@@ -1237,7 +1237,7 @@ export default function FinanceChiPage() {
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, cur, -amount);
+            await adjustDriverWalletBalanceFs(walletKey, cur, -amount);
           }
 
           setAddForm({ content: "" });
@@ -1333,19 +1333,19 @@ export default function FinanceChiPage() {
         defaultCurrency="VND"
         lockCurrencyTo="VND"
         defaultAmount={Number(advanceAmount.replace(/[^\d]/g, "")) || undefined}
-        onConfirm={(r) => {
+        onConfirm={async (r) => {
           setAdvanceError(null);
           if (!selectedPayrollDriver) return setAdvanceError("Vui lòng chọn lái xe.");
           const amount = Math.round(Number(r.amount ?? 0) || 0);
           if (!amount || amount <= 0) return setAdvanceError("Số tiền không hợp lệ.");
 
-          void addDriverAdvanceFs({
+          await addDriverAdvanceFs({
             driverEmployeeCode: selectedPayrollDriver.employeeCode,
             driverName: selectedPayrollDriver.name,
             amountVnd: amount,
           });
 
-          void addCashbookEntryFs({
+          await addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: "VND",
@@ -1357,7 +1357,7 @@ export default function FinanceChiPage() {
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, "VND", -amount);
+            await adjustDriverWalletBalanceFs(walletKey, "VND", -amount);
           }
           setAdvanceAmount("");
           setOpenAddAdvance(false);
@@ -1450,7 +1450,7 @@ export default function FinanceChiPage() {
         defaultCurrency="VND"
         lockCurrencyTo="VND"
         defaultAmount={Number(opForm.amountVnd.replace(/[^\d]/g, "")) || undefined}
-        onConfirm={(r) => {
+        onConfirm={async (r) => {
           setOpError(null);
           const amount = Math.round(Number(r.amount ?? 0) || 0);
           if (!amount || amount <= 0) return setOpError("Số tiền không hợp lệ.");
@@ -1459,14 +1459,14 @@ export default function FinanceChiPage() {
           }
           if (opType !== "VETC" && !opForm.vehiclePlate) return setOpError("Vui lòng chọn xe.");
 
-          void addOperatingExpenseFs({
+          await addOperatingExpenseFs({
             type: opType,
             vehiclePlate: opType === "VETC" ? undefined : opForm.vehiclePlate,
             amountVnd: amount,
             paymentMethod: r.sourceId.startsWith("WALLET:") ? "Ví tài xế" : r.sourceId === "CASH" ? "TM" : "CK",
           });
 
-          void addCashbookEntryFs({
+          await addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: "VND",
@@ -1479,7 +1479,7 @@ export default function FinanceChiPage() {
 
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, "VND", -amount);
+            await adjustDriverWalletBalanceFs(walletKey, "VND", -amount);
           }
 
           // Sync to vehicle status: paying "Thay Dầu" or "Bảo Dưỡng" implies done at current km.
@@ -1493,7 +1493,7 @@ export default function FinanceChiPage() {
                 lastServiceKm: opType === "Bảo Dưỡng" ? current.km : current.lastServiceKm,
                 updatedAt: Date.now(),
               };
-              void upsertVehicleFs(next);
+              await upsertVehicleFs(next);
             }
           }
 
@@ -1532,11 +1532,11 @@ export default function FinanceChiPage() {
             return remaining > 0 ? remaining : undefined;
           })()
         }
-        onConfirm={(r) => {
+        onConfirm={async (r) => {
           if (!payBookingCode) return;
           const b = reservations.find((x) => x.code === payBookingCode);
           const supplierName = b?.assignedSupplierId ? supplierById[b.assignedSupplierId]?.name : undefined;
-          void addCashbookEntryFs({
+          await addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: r.currency as any,
@@ -1548,7 +1548,7 @@ export default function FinanceChiPage() {
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, r.currency, -r.amount);
+            await adjustDriverWalletBalanceFs(walletKey, r.currency, -r.amount);
           }
         }}
       />
@@ -1586,7 +1586,7 @@ export default function FinanceChiPage() {
             return net !== 0 ? Math.abs(net) : undefined;
           })()
         }
-        onConfirm={(r) => {
+        onConfirm={async (r) => {
           if (!paySupplierId) return;
           const row = congNoBySupplier.find((x) => x.supplierId === paySupplierId);
           const s = paySupplierId !== "—" ? supplierById[paySupplierId] : undefined;
@@ -1603,7 +1603,7 @@ export default function FinanceChiPage() {
           const net = displayCur === "VND" ? netVnd : netUsd;
           const direction = net < 0 ? "IN" : "OUT";
 
-          void addCashbookEntryFs({
+          await addCashbookEntryFs({
             direction,
             sourceId: r.sourceId,
             currency: r.currency as any,
@@ -1615,7 +1615,7 @@ export default function FinanceChiPage() {
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, r.currency, direction === "OUT" ? -r.amount : r.amount);
+            await adjustDriverWalletBalanceFs(walletKey, r.currency, direction === "OUT" ? -r.amount : r.amount);
           }
         }}
       />

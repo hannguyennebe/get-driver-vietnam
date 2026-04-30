@@ -415,8 +415,15 @@ export default function OfficeExpenseCatalogPage() {
                     createdAt: existingEdit?.createdAt ?? now,
                     updatedAt: now,
                   };
-                  void upsertApTemplateFs(tpl);
-                  setOpenAdd(false);
+                  (async () => {
+                    try {
+                      await upsertApTemplateFs(tpl);
+                      setOpenAdd(false);
+                    } catch (e) {
+                      const msg = String((e as any)?.message ?? e ?? "unknown");
+                      setError(`Không thể lưu danh mục. (${msg})`);
+                    }
+                  })();
                 }}
               >
                 Lưu
