@@ -5,6 +5,19 @@ import type { OperatingExpense } from "@/lib/finance/operatingExpensesStore";
 
 const COL = "operatingExpenses";
 
+function stripUndefined<T>(obj: T): T {
+  // Firestore rejects `undefined` field values. This removes them recursively.
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(stripUndefined) as any;
+  if (typeof obj !== "object") return obj;
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj as any)) {
+    if (v === undefined) continue;
+    out[k] = stripUndefined(v);
+  }
+  return out as T;
+}
+
 export function subscribeOperatingExpenses(onRows: (rows: OperatingExpense[]) => void): Unsubscribe {
   const db = getFirebaseDb();
   const q = query(collection(db, COL), orderBy("createdAt", "desc"));
@@ -33,7 +46,7 @@ export async function addOperatingExpenseFs(
     createdDate: now.toLocaleDateString("vi-VN"),
     createdTime: now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
   };
-  await setDoc(doc(db, COL, next.id), next, { merge: false });
+  await setDoc(doc(db, COL, next.id), stripUndefined(next), { merge: false });
   return next;
 }
 
