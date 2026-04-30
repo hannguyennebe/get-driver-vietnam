@@ -453,7 +453,6 @@ export default function DriversPage() {
                     type: tab,
                     status: "Sẵn sàng",
                     trips: 0,
-                    vehiclePlate: undefined,
                     createdAt: now,
                     updatedAt: now,
                   };

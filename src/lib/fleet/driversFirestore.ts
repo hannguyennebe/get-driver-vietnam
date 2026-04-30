@@ -13,6 +13,19 @@ import type { Driver } from "@/lib/fleet/driverStore";
 
 const COL = "drivers";
 
+function stripUndefined<T>(obj: T): T {
+  // Firestore rejects `undefined` field values. This removes them recursively.
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(stripUndefined) as any;
+  if (typeof obj !== "object") return obj;
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj as any)) {
+    if (v === undefined) continue;
+    out[k] = stripUndefined(v);
+  }
+  return out as T;
+}
+
 export function subscribeDrivers(onRows: (rows: Driver[]) => void): Unsubscribe {
   const db = getFirebaseDb();
   const q = query(collection(db, COL), orderBy("employeeCode", "asc"));
@@ -31,7 +44,7 @@ export async function upsertDriverFs(next: Driver) {
   const db = getFirebaseDb();
   const id = String(next.employeeCode || "").trim();
   if (!id) throw new Error("missing_employee_code");
-  await setDoc(doc(db, COL, id), next, { merge: false });
+  await setDoc(doc(db, COL, id), stripUndefined(next), { merge: false });
 }
 
 export async function deleteDriverFs(employeeCode: string) {
