@@ -248,6 +248,13 @@ export default function DashboardPage() {
                 <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
                   {dayTrips.length.toLocaleString("vi-VN")} chuyến
                 </span>
+                <button
+                  type="button"
+                  className="h-9 rounded-md px-4 text-xs font-semibold text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
+                  onClick={() => router.push("/reservation/new")}
+                >
+                  RESERVATION
+                </button>
               </div>
             </div>
 
@@ -281,15 +288,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <div className="mt-5">
-              <button
-                type="button"
-                className="h-10 w-full rounded-md px-4 text-sm font-semibold text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
-                onClick={() => router.push("/reservation/new")}
-              >
-                RESERVATION
-              </button>
-            </div>
+            {/* moved RESERVATION button to header */}
           </div>
 
           <LatestBookingsCard
