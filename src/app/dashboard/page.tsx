@@ -235,22 +235,35 @@ export default function DashboardPage() {
           </div>
 
           <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            <div className="grid w-full min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-[#B8D4EA]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:border-zinc-600 sm:grid-cols-3 sm:divide-x sm:divide-[#B8D4EA]/50 dark:sm:divide-zinc-600">
+              {/* Cột 1 — ngày: xanh nhẹ */}
+              <div className="flex min-h-[76px] min-w-0 flex-col justify-center bg-gradient-to-br from-[#E8F4FC] via-[#EDF6FB] to-[#DCEEF9] px-4 py-3 dark:from-[#152836]/90 dark:via-[#1a3048]/90 dark:to-[#132638]/90">
+                <div className="text-sm font-semibold leading-snug text-[#1a5278] dark:text-sky-100">
                   {vnDmyTitleFromIso(todayIso)}
                 </div>
-                <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                <div className="mt-1 text-xs font-medium text-[#4a88aa] dark:text-sky-200/80">
                   Lịch trình hôm nay
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
-                  {dayTrips.length.toLocaleString("vi-VN")} chuyến
+              {/* Cột 2 — số chuyến: trắng + nhấn xanh/vàng đất */}
+              <div className="flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-1 border-t border-[#B8D4EA]/50 bg-white px-4 py-3 dark:border-zinc-600 dark:bg-zinc-950 sm:border-t-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#7a9aae] dark:text-zinc-400">
+                  Số chuyến hôm nay
                 </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold tabular-nums text-[#2E7AB0] dark:text-sky-300">
+                    {dayTrips.length.toLocaleString("vi-VN")}
+                  </span>
+                  <span className="text-sm font-semibold text-[#A67C2E] dark:text-[#D4B56A]">
+                    chuyến
+                  </span>
+                </div>
+              </div>
+              {/* Cột 3 — RESERVATION: vàng đất */}
+              <div className="flex min-h-[76px] min-w-0 items-center justify-center border-t border-[#c9a857]/40 bg-gradient-to-b from-[#EBCB7A] via-[#D4AE52] to-[#B88920] px-4 py-3 dark:border-amber-900/50 dark:from-[#6b5220] dark:via-[#5c461c] dark:to-[#4a3815] sm:border-t-0">
                 <button
                   type="button"
-                  className="h-9 rounded-md px-4 text-xs font-semibold text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
+                  className="w-full max-w-[220px] rounded-lg border border-[#A87912]/35 bg-white/25 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-[#3d2f0d] shadow-sm backdrop-blur-[2px] transition hover:bg-white/40 hover:shadow-md active:translate-y-px dark:border-amber-900/40 dark:bg-black/20 dark:text-amber-50 dark:hover:bg-black/30 sm:max-w-none"
                   onClick={() => router.push("/reservation/new")}
                 >
                   RESERVATION
@@ -287,8 +300,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
-
-            {/* moved RESERVATION button to header */}
           </div>
 
           <LatestBookingsCard
