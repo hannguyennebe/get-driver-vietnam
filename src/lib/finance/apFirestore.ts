@@ -21,6 +21,19 @@ const COL_TPL = "ap_templates";
 const COL_EXP = "ap_expenses";
 const COL_PAY = "ap_payments";
 
+function stripUndefined<T>(obj: T): T {
+  // Firestore rejects `undefined` field values. This removes them recursively.
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(stripUndefined) as any;
+  if (typeof obj !== "object") return obj;
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj as any)) {
+    if (v === undefined) continue;
+    out[k] = stripUndefined(v);
+  }
+  return out as T;
+}
+
 export function subscribeApTemplates(onRows: (rows: RecurringExpenseTemplate[]) => void): Unsubscribe {
   const db = getFirebaseDb();
   const q = query(collection(db, COL_TPL), orderBy("updatedAt", "desc"));
@@ -39,7 +52,7 @@ export async function upsertApTemplateFs(tpl: RecurringExpenseTemplate) {
   const db = getFirebaseDb();
   const id = String(tpl.id || "").trim();
   if (!id) throw new Error("missing_id");
-  await setDoc(doc(db, COL_TPL, id), tpl, { merge: false });
+  await setDoc(doc(db, COL_TPL, id), stripUndefined(tpl), { merge: false });
 }
 
 export function subscribeApExpenses(onRows: (rows: ExpenseInstance[]) => void): Unsubscribe {
@@ -74,7 +87,7 @@ export async function upsertApExpenseFs(expense: ExpenseInstance) {
   const db = getFirebaseDb();
   const id = String(expense.id || "").trim();
   if (!id) throw new Error("missing_id");
-  await setDoc(doc(db, COL_EXP, id), expense, { merge: false });
+  await setDoc(doc(db, COL_EXP, id), stripUndefined(expense), { merge: false });
 }
 
 export async function addManualExpenseFs(input: {
@@ -102,7 +115,7 @@ export async function addManualExpenseFs(input: {
     createdAt: now,
     createdBy: me?.name ?? "—",
   };
-  await setDoc(doc(db, COL_EXP, expense.id), expense, { merge: false });
+  await setDoc(doc(db, COL_EXP, expense.id), stripUndefined(expense), { merge: false });
   return expense;
 }
 
@@ -196,7 +209,7 @@ export async function ensureRecurringExpensesForRangeFs(input: {
         createdBy: me?.name ?? "—",
       };
       existsKey.add(key);
-      writes.push(setDoc(doc(db, COL_EXP, exp.id), exp, { merge: false }));
+      writes.push(setDoc(doc(db, COL_EXP, exp.id), stripUndefined(exp), { merge: false }));
     }
   }
 
