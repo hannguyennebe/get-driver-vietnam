@@ -591,11 +591,6 @@ function ScheduleCard({
       `Trả: ${trip.to || "—"}`,
       `Thu hộ: ${Math.round(trip.thuHoVnd ?? 0).toLocaleString("vi-VN")} đ`,
       `Ghi chú: ${trip.note?.trim() ? trip.note.trim() : "—"}`,
-      "",
-      `Tài xế: ${trip.driverName || "—"}`,
-      `SĐT: ${trip.driverPhone || "—"}`,
-      `Loại xe: ${trip.vehicleType || "—"}`,
-      `Biển số: ${trip.vehiclePlate || "—"}`,
     ].filter((x): x is string => Boolean(x));
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
