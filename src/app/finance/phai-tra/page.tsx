@@ -5,13 +5,16 @@ import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  addManualExpense,
-  ensureApStore,
-  ensureRecurringExpensesForRange,
-  listExpenses,
-  listPayments,
   type ExpenseInstance,
 } from "@/lib/finance/apStore";
+import type { PaymentTransaction, RecurringExpenseTemplate } from "@/lib/finance/apStore";
+import {
+  addManualExpenseFs,
+  ensureRecurringExpensesForRangeFs,
+  subscribeApExpenses,
+  subscribeApPayments,
+  subscribeApTemplates,
+} from "@/lib/finance/apFirestore";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +39,8 @@ export default function FinancePhaiTraPage() {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<ExpenseInstance[]>([]);
   const [paymentsByExpense, setPaymentsByExpense] = React.useState<Record<string, number>>({});
+  const [templates, setTemplates] = React.useState<RecurringExpenseTemplate[]>([]);
+  const [payments, setPayments] = React.useState<PaymentTransaction[]>([]);
   const [showCancelled, setShowCancelled] = React.useState(false);
   const [tab, setTab] = React.useState<"NOT_DUE" | "OVERDUE" | "PAID">("NOT_DUE");
   const [openAdd, setOpenAdd] = React.useState(false);
@@ -50,41 +55,43 @@ export default function FinancePhaiTraPage() {
   });
 
   React.useEffect(() => {
-    ensureApStore();
+    return () => {
+      // no-op
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const unsubT = subscribeApTemplates(setTemplates);
+    const unsubE = subscribeApExpenses(setRows);
+    const unsubP = subscribeApPayments(setPayments);
+    return () => {
+      unsubT();
+      unsubE();
+      unsubP();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const map: Record<string, number> = {};
+    for (const p of payments) map[p.expenseId] = (map[p.expenseId] ?? 0) + (p.amountVnd || 0);
+    setPaymentsByExpense(map);
+  }, [payments]);
+
+  React.useEffect(() => {
     const now = new Date();
     const cy = now.getFullYear();
-    const cm = now.getMonth() + 1; // 1..12
+    const cm = now.getMonth() + 1;
     const from = shiftCalendarMonth(cy, cm, -1);
     const to = shiftCalendarMonth(cy, cm, 2);
-    ensureRecurringExpensesForRange({
+    void ensureRecurringExpensesForRangeFs({
       fromYear: from.year,
       fromMonth: from.month,
       toYear: to.year,
       toMonth: to.month,
+      templates,
+      existingExpenses: rows,
     });
-
-    const load = () => {
-      const expenses = listExpenses();
-      const payments = listPayments();
-      const map: Record<string, number> = {};
-      for (const p of payments) map[p.expenseId] = (map[p.expenseId] ?? 0) + (p.amountVnd || 0);
-      setPaymentsByExpense(map);
-      setRows(expenses);
-    };
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.finance.ap.")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
+  }, [templates, rows]);
 
   const today = todayIso();
 
@@ -319,7 +326,7 @@ export default function FinancePhaiTraPage() {
                   if (!Number.isFinite(month) || month < 1 || month > 12) return setAddError("Tháng không hợp lệ.");
                   if (!Number.isFinite(year) || year < 2000 || year > 2100) return setAddError("Năm không hợp lệ.");
                   if (!form.dueDateISO) return setAddError("Vui lòng chọn hạn thanh toán.");
-                  addManualExpense({
+                  void addManualExpenseFs({
                     name: form.name,
                     category: "OtherOffice",
                     amountVnd: amount,
@@ -327,7 +334,6 @@ export default function FinancePhaiTraPage() {
                     dueDateISO: form.dueDateISO,
                     note: form.note.trim() || undefined,
                   });
-                  setRows(listExpenses());
                   setOpenAdd(false);
                 }}
               >

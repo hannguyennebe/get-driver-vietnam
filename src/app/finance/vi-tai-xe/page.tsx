@@ -4,12 +4,11 @@ import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import { Input } from "@/components/ui/input";
 import {
-  ensureDriverWalletStore,
-  ensureWalletsForAllRosterDrivers,
-  listDriverWallets,
   type DriverWallet,
 } from "@/lib/fleet/driverWalletStore";
-import { ensureDriverStore, listDrivers } from "@/lib/fleet/driverStore";
+import type { Driver } from "@/lib/fleet/driverStore";
+import { subscribeDrivers } from "@/lib/fleet/driversFirestore";
+import { subscribeDriverWallets, ensureWalletForRosterDriverFs } from "@/lib/fleet/driverWalletsFirestore";
 import type { Reservation } from "@/lib/reservations/reservationStore";
 import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 
@@ -25,63 +24,34 @@ export default function FinanceViTaiXePage() {
   const [source, setSource] = React.useState<SourceFilter>("all");
   const [rows, setRows] = React.useState<WalletRow[]>([]);
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
+  const [drivers, setDrivers] = React.useState<Driver[]>([]);
+  const [wallets, setWallets] = React.useState<DriverWallet[]>([]);
 
-  const load = React.useCallback(() => {
-    ensureDriverStore();
-    ensureDriverWalletStore();
-    ensureWalletsForAllRosterDrivers();
-
-    const drivers = listDrivers();
-    const driverByCode = new Map(drivers.map((d) => [d.employeeCode, d]));
-
-    const wallets = listDriverWallets();
-    const enriched: WalletRow[] = wallets.map((w) => {
-      if (w.source === "roster" && w.employeeCode) {
-        const dr = driverByCode.get(w.employeeCode);
-        return {
-          ...w,
-          displayPhone: dr?.phone ?? "—",
-          displayPlate: dr?.vehiclePlate ?? "—",
-        };
-      }
-      return {
-        ...w,
-        displayPhone: w.phone ?? "—",
-        displayPlate: w.plate ?? "—",
-      };
-    });
-
-    enriched.sort((a, b) => {
-      const byName = a.driverName.localeCompare(b.driverName, "vi");
-      if (byName !== 0) return byName;
-      return a.walletName.localeCompare(b.walletName);
-    });
-
-    setRows(enriched);
+  React.useEffect(() => {
+    const unsubD = subscribeDrivers(setDrivers);
+    const unsubW = subscribeDriverWallets(setWallets);
+    const unsubR = subscribeActiveReservations(setReservations);
+    return () => {
+      unsubD();
+      unsubW();
+      unsubR();
+    };
   }, []);
 
   React.useEffect(() => {
-    load();
-    const unsub = subscribeActiveReservations(setReservations);
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (
-        e.key.includes("getdriver.fleet.driverWallets") ||
-        e.key.includes("getdriver.fleet.drivers")
-      ) {
-        load();
+    // Ensure roster wallets exist
+    for (const d of drivers) void ensureWalletForRosterDriverFs(d.employeeCode, d.name);
+    const driverByCode = new Map(drivers.map((d) => [d.employeeCode, d]));
+    const enriched: WalletRow[] = wallets.map((w) => {
+      if (w.source === "roster" && w.employeeCode) {
+        const dr = driverByCode.get(w.employeeCode);
+        return { ...w, displayPhone: dr?.phone ?? "—", displayPlate: dr?.vehiclePlate ?? "—" };
       }
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-      unsub();
-    };
-  }, [load]);
+      return { ...w, displayPhone: w.phone ?? "—", displayPlate: w.plate ?? "—" };
+    });
+    enriched.sort((a, b) => a.driverName.localeCompare(b.driverName, "vi") || a.walletName.localeCompare(b.walletName));
+    setRows(enriched);
+  }, [drivers, wallets]);
 
   const filtered = React.useMemo(() => {
     const hay = (w: WalletRow) =>

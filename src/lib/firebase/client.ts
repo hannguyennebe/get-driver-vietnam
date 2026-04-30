@@ -9,6 +9,11 @@ type FirebaseWebConfig = {
   appId: string;
 };
 
+export type FirebaseProjectHint = {
+  projectId: string;
+  authDomain?: string;
+};
+
 function getFirebaseConfig() {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
@@ -93,6 +98,22 @@ export function getFirebaseDb(): Firestore {
   if (!cachedApp) throw new Error("Firebase app not initialized");
   cachedDb = getFirestore(cachedApp);
   return cachedDb;
+}
+
+export function getFirebaseProjectHint(): FirebaseProjectHint | null {
+  try {
+    // Prefer initialized app options (most accurate for runtime)
+    const p = String((cachedApp as any)?.options?.projectId ?? "").trim();
+    const d = String((cachedApp as any)?.options?.authDomain ?? "").trim();
+    if (p) return { projectId: p, authDomain: d || undefined };
+
+    // Fall back to build-time env/injected config (best-effort)
+    const cfg = getFirebaseConfig();
+    if (!cfg) return null;
+    return { projectId: cfg.projectId, authDomain: cfg.authDomain || undefined };
+  } catch {
+    return null;
+  }
 }
 
 export async function initFirebaseDb(): Promise<Firestore | null> {

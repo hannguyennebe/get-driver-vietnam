@@ -26,68 +26,8 @@ export type Driver = {
 
 const KEY = "getdriver.fleet.drivers.v1";
 
-const SEED: Driver[] = [
-  {
-    employeeCode: "10001",
-    name: "Nguyễn Văn An",
-    phone: "0901234567",
-    licenseType: "B2",
-    type: "internal",
-    status: "Sẵn sàng",
-    trips: 156,
-    vehiclePlate: "51A-123.45",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    employeeCode: "10002",
-    name: "Trần Minh Tuấn",
-    phone: "0912345678",
-    licenseType: "C",
-    type: "internal",
-    status: "Bận giấy tờ",
-    trips: 203,
-    vehiclePlate: "51A-234.56",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    employeeCode: "20001",
-    name: "Lê Hoàng Nam",
-    phone: "0923456789",
-    licenseType: "B2",
-    type: "external",
-    status: "Sẵn sàng",
-    trips: 89,
-    vehiclePlate: "51A-345.67",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    employeeCode: "10003",
-    name: "Phạm Đức Huy",
-    phone: "0934567890",
-    licenseType: "D",
-    type: "internal",
-    status: "Nghỉ Phép",
-    trips: 124,
-    vehiclePlate: "51A-456.78",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    employeeCode: "20002",
-    name: "Võ Thanh Sơn",
-    phone: "0945678901",
-    licenseType: "B2",
-    type: "external",
-    status: "Sẵn sàng",
-    trips: 178,
-    vehiclePlate: "51A-567.89",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-];
+// Go-live: no demo seed data.
+const SEED: Driver[] = [];
 
 function safeParse(raw: string | null): Driver[] | null {
   if (!raw) return null;

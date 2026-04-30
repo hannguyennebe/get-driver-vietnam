@@ -6,25 +6,22 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getPaymentInfo, type PaymentAccount, type PaymentInfo } from "@/lib/admin/paymentStore";
 import {
-  computeBalance,
-  ensureCashbookStore,
-  listCashbookEntries,
   type CashbookEntry,
   type CashbookSourceId,
 } from "@/lib/finance/cashbookStore";
+import { subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
 import { type Reservation } from "@/lib/reservations/reservationStore";
 import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
-import { ensureApStore, listExpenses, listPayments } from "@/lib/finance/apStore";
-import { ensurePartnersStore, getPartners } from "@/lib/data/partnersStore";
-import {
-  ensureOperatingExpensesStore,
-  listOperatingExpenses,
-} from "@/lib/finance/operatingExpensesStore";
-import { ensureOtherExpensesStore, listOtherExpenses } from "@/lib/finance/otherExpensesStore";
-import {
-  ensureDriverAdvancesStore,
-  listDriverAdvances,
-} from "@/lib/finance/driverAdvancesStore";
+import type { ExpenseInstance, PaymentTransaction } from "@/lib/finance/apStore";
+import { subscribeApExpenses, subscribeApPayments } from "@/lib/finance/apFirestore";
+import type { TravelAgent } from "@/lib/data/partnersStore";
+import { subscribeTravelAgents } from "@/lib/data/partnersFirestore";
+import type { OperatingExpense } from "@/lib/finance/operatingExpensesStore";
+import { subscribeOperatingExpenses } from "@/lib/finance/operatingExpensesFirestore";
+import type { OtherExpense } from "@/lib/finance/otherExpensesStore";
+import { subscribeOtherExpenses } from "@/lib/finance/otherExpensesFirestore";
+import type { DriverAdvance } from "@/lib/finance/driverAdvancesStore";
+import { subscribeDriverAdvances } from "@/lib/finance/driverAdvancesFirestore";
 
 type CashflowType = "Thu" | "Chi";
 
@@ -44,6 +41,13 @@ export default function FinanceSoThuChiPage() {
   const [tab, setTab] = React.useState<CashflowType>("Thu");
   const [rows, setRows] = React.useState<CashflowRow[]>([]);
   const [paymentInfo, setPaymentInfo] = React.useState<PaymentInfo | null>(null);
+  const [cashbookEntries, setCashbookEntries] = React.useState<CashbookEntry[]>([]);
+  const [apExpenses, setApExpenses] = React.useState<ExpenseInstance[]>([]);
+  const [apPayments, setApPayments] = React.useState<PaymentTransaction[]>([]);
+  const [travelAgents, setTravelAgents] = React.useState<TravelAgent[]>([]);
+  const [operatingExpenses, setOperatingExpenses] = React.useState<OperatingExpense[]>([]);
+  const [otherExpenses, setOtherExpenses] = React.useState<OtherExpense[]>([]);
+  const [driverAdvances, setDriverAdvances] = React.useState<DriverAdvance[]>([]);
   const [monthSel, setMonthSel] = React.useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
@@ -65,11 +69,10 @@ export default function FinanceSoThuChiPage() {
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
 
   const load = React.useCallback(() => {
-    ensureCashbookStore();
     const pi = getPaymentInfo();
     setPaymentInfo(pi);
 
-    const entries = listCashbookEntries();
+    const entries = cashbookEntries;
     const cash: Record<string, number> = {};
     for (const e of entries) {
       if (e.sourceId !== "CASH") continue;
@@ -78,26 +81,29 @@ export default function FinanceSoThuChiPage() {
       cash[cur] = (cash[cur] ?? 0) + signed;
     }
 
+    const computeBalanceFrom = (sourceId: string, currency: string) => {
+      const sid = String(sourceId || "").trim();
+      const cur = String(currency || "VND").trim().toUpperCase() || "VND";
+      return entries
+        .filter((e) => e.sourceId === sid && (String(e.currency || "VND").trim().toUpperCase() || "VND") === cur)
+        .reduce((s, e) => s + (e.direction === "IN" ? e.amount : -e.amount), 0);
+    };
+
     setBalances({
       cash,
-      vatVnd: computeBalance({ sourceId: "VAT_VND", currency: "VND" }),
-      noVatVnd: computeBalance({ sourceId: "NOVAT_VND", currency: "VND" }),
-      usd: computeBalance({ sourceId: "USD", currency: "USD" }),
+      vatVnd: computeBalanceFrom("VAT_VND", "VND"),
+      noVatVnd: computeBalanceFrom("NOVAT_VND", "VND"),
+      usd: computeBalanceFrom("USD", "USD"),
     });
 
     // Cashflow summary blocks (VND)
-    ensureApStore();
-    ensurePartnersStore();
-    ensureOperatingExpensesStore();
-    ensureOtherExpensesStore();
-    ensureDriverAdvancesStore();
     const today = toIsoDate(new Date()); // realtime (local timezone)
 
     const cashVnd = Number(cash["VND"] ?? 0) || 0;
-    const fundVnd = cashVnd + computeBalance({ sourceId: "VAT_VND", currency: "VND" }) + computeBalance({ sourceId: "NOVAT_VND", currency: "VND" });
+    const fundVnd = cashVnd + computeBalanceFrom("VAT_VND", "VND") + computeBalanceFrom("NOVAT_VND", "VND");
 
-    const expenses = listExpenses();
-    const payments = listPayments();
+    const expenses = apExpenses;
+    const payments = apPayments;
     const paidByExpense = new Map<string, number>();
     for (const p of payments) {
       paidByExpense.set(p.expenseId, (paidByExpense.get(p.expenseId) ?? 0) + (p.amountVnd || 0));
@@ -110,8 +116,7 @@ export default function FinanceSoThuChiPage() {
       .reduce((s, e) => s + remaining(e), 0);
     const allPayablesVnd = unpaid.reduce((s, e) => s + remaining(e), 0);
 
-    const partners = getPartners();
-    const taById = new Map(partners.travelAgents.map((t) => [t.id, t] as const));
+    const taById = new Map(travelAgents.map((t) => [t.id, t] as const));
 
     const dueReceivablesVnd = reservations
       .filter((r) => r.currency === "VND" && r.paymentType !== "Ví tài xế")
@@ -138,27 +143,27 @@ export default function FinanceSoThuChiPage() {
     }));
     out.sort((a, b) => tripKey(b.date, b.time) - tripKey(a.date, a.time));
     setRows(out);
-  }, [reservations]);
+  }, [reservations, cashbookEntries, apExpenses, apPayments, travelAgents]);
 
   React.useEffect(() => {
     load();
-    const unsub = subscribeActiveReservations(setReservations);
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (
-        e.key.includes("getdriver.finance.cashbook") ||
-        e.key.includes("getdriver.payment.info")
-      ) {
-        load();
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
+    const unsubR = subscribeActiveReservations(setReservations);
+    const unsubCb = subscribeCashbookEntries(setCashbookEntries);
+    const unsubApE = subscribeApExpenses(setApExpenses);
+    const unsubApP = subscribeApPayments(setApPayments);
+    const unsubTa = subscribeTravelAgents(setTravelAgents);
+    const unsubOp = subscribeOperatingExpenses(setOperatingExpenses);
+    const unsubOe = subscribeOtherExpenses(setOtherExpenses);
+    const unsubAdv = subscribeDriverAdvances(setDriverAdvances);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-      unsub();
+      unsubR();
+      unsubCb();
+      unsubApE();
+      unsubApP();
+      unsubTa();
+      unsubOp();
+      unsubOe();
+      unsubAdv();
     };
   }, [load]);
 
@@ -303,6 +308,11 @@ export default function FinanceSoThuChiPage() {
             <MonthlyInOutChart rows={rows} />
             <ExpenseDonutCard
               reservations={reservations}
+              operatingExpenses={operatingExpenses}
+              otherExpenses={otherExpenses}
+              driverAdvances={driverAdvances}
+              apExpenses={apExpenses}
+              apPayments={apPayments}
               year={expenseSel.year}
               month={expenseSel.month}
               onYearChange={(year) => setExpenseSel((s) => ({ ...s, year }))}
@@ -694,12 +704,22 @@ function MonthlyInOutChart({ rows }: { rows: CashflowRow[] }) {
 
 function ExpenseDonutCard({
   reservations,
+  operatingExpenses,
+  otherExpenses,
+  driverAdvances,
+  apExpenses,
+  apPayments,
   year,
   month,
   onMonthChange,
   onYearChange,
 }: {
   reservations: Reservation[];
+  operatingExpenses: OperatingExpense[];
+  otherExpenses: OtherExpense[];
+  driverAdvances: DriverAdvance[];
+  apExpenses: ExpenseInstance[];
+  apPayments: PaymentTransaction[];
   year: number;
   month: number;
   onMonthChange: (m: number) => void;
@@ -720,7 +740,7 @@ function ExpenseDonutCard({
       .reduce((s, r) => s + (Number(r.assignedExternalPriceVnd ?? 0) || 0), 0);
 
     // 2) Chi vận hành
-    const ops = listOperatingExpenses().filter((o) => dmyMonthKey(o.createdDate) === mk);
+    const ops = operatingExpenses.filter((o) => dmyMonthKey(o.createdDate) === mk);
     const vetcVnd = ops.filter((o) => o.type === "VETC").reduce((s, o) => s + (o.amountVnd || 0), 0);
     const fuelVnd = ops.filter((o) => o.type === "Nhiên Liệu").reduce((s, o) => s + (o.amountVnd || 0), 0);
     const serviceVnd = ops
@@ -728,13 +748,13 @@ function ExpenseDonutCard({
       .reduce((s, o) => s + (o.amountVnd || 0), 0);
 
     // 3) Chi lương lái xe (hiện lấy theo các khoản tạm ứng đã thanh toán)
-    const payrollVnd = listDriverAdvances()
+    const payrollVnd = driverAdvances
       .filter((a) => dmyMonthKey(a.createdDate) === mk)
       .reduce((s, a) => s + (a.amountVnd || 0), 0);
 
     // 4) Chi phí văn phòng (AP templates office)
-    const expenses = listExpenses();
-    const payments = listPayments();
+    const expenses = apExpenses;
+    const payments = apPayments;
     const paidByExpense = new Map<string, number>();
     for (const p of payments) {
       paidByExpense.set(p.expenseId, (paidByExpense.get(p.expenseId) ?? 0) + (p.amountVnd || 0));
@@ -746,7 +766,7 @@ function ExpenseDonutCard({
       .reduce((s, e) => s + remaining(e), 0);
 
     // 5) Chi khác (OtherExpense)
-    const otherVnd = listOtherExpenses()
+    const otherVnd = otherExpenses
       .filter((o) => o.currency === "VND")
       .filter((o) => dmyMonthKey(o.createdDate) === mk)
       .reduce((s, o) => s + (o.amount || 0), 0);

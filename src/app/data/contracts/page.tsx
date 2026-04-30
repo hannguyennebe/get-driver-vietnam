@@ -4,16 +4,24 @@ import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import { Pencil } from "lucide-react";
 import { getCompanyInfo } from "@/lib/admin/companyStore";
-import { ensurePartnersStore, listTravelAgents, type TravelAgent } from "@/lib/data/partnersStore";
+import type { TravelAgent } from "@/lib/data/partnersStore";
+import { subscribeTravelAgents } from "@/lib/data/partnersFirestore";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getPaymentInfo } from "@/lib/admin/paymentStore";
 import {
-  ensureQuotationStore,
-  getQuotation,
   groupQuotations,
-  listQuotations,
   type Quotation,
 } from "@/lib/data/quotationStore";
+import { subscribeQuotations } from "@/lib/data/quotationsFirestore";
+import {
+  deleteNtContract,
+  subscribeNtContracts,
+  subscribeNtTemplate,
+  upsertNtContract,
+  upsertNtTemplate,
+  type NtContractDoc,
+} from "@/lib/contracts/contractsFirestore";
+import { useDocLock } from "@/lib/firestore/useDocLock";
 
 export default function DataContractsPage() {
   const EARTH_BTN =
@@ -161,6 +169,7 @@ export default function DataContractsPage() {
   const [openPickQuote, setOpenPickQuote] = React.useState(false);
   const [pickQuoteForId, setPickQuoteForId] = React.useState<string>("");
   const [quoteQuery, setQuoteQuery] = React.useState("");
+  const [allQuotes, setAllQuotes] = React.useState<Quotation[]>([]);
   const [quoteGroups, setQuoteGroups] = React.useState<Array<{ id: string; title: string; rows: Quotation[] }>>([]);
   const [shareBusyId, setShareBusyId] = React.useState<string>("");
   const [list, setList] = React.useState<
@@ -184,10 +193,38 @@ export default function DataContractsPage() {
     },
   );
 
-  const saveList = React.useCallback((next: any[]) => {
-    setList(next);
-    lsSet("getdriver.contracts.nt.list.v1", JSON.stringify(next));
-  }, []);
+  const anyEditing =
+    editingBlock1 ||
+    editingBlock2 ||
+    editingBlock3 ||
+    editingBlock4 ||
+    editingBlock5 ||
+    editingBlock6 ||
+    editingBlock7 ||
+    editingBlock8 ||
+    editingBlock9 ||
+    editingBlock10;
+
+  const lock = useDocLock({
+    resource: "contractsNt",
+    resourceId: anyEditing ? "nt_template:singleton" : null,
+    enabled: true,
+  });
+
+  const saveList = React.useCallback(
+    (next: NtContractDoc[]) => {
+      const prevIds = new Set((list ?? []).map((x: any) => String(x?.id ?? "")));
+      const nextIds = new Set((next ?? []).map((x: any) => String(x?.id ?? "")));
+      setList(next as any);
+      // Firestore is source of truth; we still mirror to localStorage for backward-compat.
+      lsSet("getdriver.contracts.nt.list.v1", JSON.stringify(next));
+      for (const row of next) void upsertNtContract(row);
+      for (const id of prevIds) {
+        if (id && !nextIds.has(id)) void deleteNtContract(id);
+      }
+    },
+    [list],
+  );
 
   async function readPdfError(res: Response) {
     const ct = res.headers.get("content-type") || "";
@@ -247,45 +284,43 @@ export default function DataContractsPage() {
   }, [block6Text]);
 
   React.useEffect(() => {
-    ensurePartnersStore();
-    const loadTa = () => setTravelAgents(listTravelAgents());
-    loadTa();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.partners")) loadTa();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => loadTa();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-    };
+    const unsub = subscribeTravelAgents(setTravelAgents);
+    return () => unsub();
   }, []);
 
   React.useEffect(() => {
-    ensureQuotationStore();
-    const load = () => {
-      const all = listQuotations();
+    const unsub = subscribeQuotations((all) => {
+      setAllQuotes(all);
       const q = quoteQuery.trim().toLowerCase();
       const filtered = !q
         ? all
         : all.filter((x) => `${x.title} ${x.groupTitle}`.toLowerCase().includes(q));
       setQuoteGroups(groupQuotations(filtered));
-    };
-    load();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.quotations")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-    };
+    });
+    return () => unsub();
   }, [quoteQuery]);
+
+  React.useEffect(() => {
+    const unsubTempl = subscribeNtTemplate((t) => {
+      if (!t) return;
+      setBlock1Text(t.block1 ?? block1Text);
+      setBlock2Text(t.block2 ?? block2Text);
+      setBlock3Text(t.block3 ?? block3Text);
+      setBlock4Text(t.block4 ?? block4Text);
+      setBlock5Text(t.block5 ?? block5Text);
+      setBlock6Text(t.block6 ?? block6Text);
+      setBlock7Text(t.block7 ?? block7Text);
+      setBlock8Text(t.block8 ?? block8Text);
+      setBlock9Text(t.block9 ?? block9Text);
+      setBlock10Text(t.block10 ?? block10Text);
+    });
+    const unsubList = subscribeNtContracts((rows) => setList(rows as any));
+    return () => {
+      unsubTempl();
+      unsubList();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     const loadPay = () => {
@@ -421,6 +456,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock1(true);
                             }}
                           >
@@ -435,6 +471,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock2(true);
                             }}
                           >
@@ -449,6 +486,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock3(true);
                             }}
                           >
@@ -463,6 +501,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock4(true);
                             }}
                           >
@@ -477,6 +516,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock5(true);
                             }}
                           >
@@ -503,6 +543,7 @@ export default function DataContractsPage() {
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
+                                if (lock.isReady && !lock.canEdit) return;
                                 setEditingBlock6(true);
                               }}
                             >
@@ -518,6 +559,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock7(true);
                             }}
                           >
@@ -532,6 +574,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock8(true);
                             }}
                           >
@@ -546,6 +589,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock9(true);
                             }}
                           >
@@ -560,6 +604,7 @@ export default function DataContractsPage() {
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              if (lock.isReady && !lock.canEdit) return;
                               setEditingBlock10(true);
                             }}
                           >
@@ -604,7 +649,9 @@ export default function DataContractsPage() {
                             <button
                               type="button"
                               className={EARTH_BTN + " px-4"}
+                              disabled={Boolean(lock.isReady && !lock.canEdit)}
                               onClick={() => {
+                                if (lock.isReady && !lock.canEdit) return;
                                 const next = block1Draft.trim() || block1Text;
                                 setBlock1Text(next);
                                 lsSet("getdriver.contracts.nt.block1.v1", next);
@@ -655,6 +702,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block2Draft.trim() || block2Text;
                                 setBlock2Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block2.v1", next);
                                 setEditingBlock2(false);
                               }}
@@ -701,6 +749,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block3Draft.trim() || block3Text;
                                 setBlock3Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block3.v1", next);
                                 setEditingBlock3(false);
                               }}
@@ -747,6 +796,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block4Draft.trim() || block4Text;
                                 setBlock4Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block4.v1", next);
                                 setEditingBlock4(false);
                               }}
@@ -793,6 +843,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block5Draft.trim() || block5Text;
                                 setBlock5Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block5.v1", next);
                                 setEditingBlock5(false);
                               }}
@@ -839,6 +890,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block6Draft.trim() || block6Text;
                                 setBlock6Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block6.v1", next);
                                 setEditingBlock6(false);
                               }}
@@ -885,6 +937,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block7Draft.trim() || block7Text;
                                 setBlock7Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block7.v1", next);
                                 setEditingBlock7(false);
                               }}
@@ -935,6 +988,7 @@ export default function DataContractsPage() {
                                 onClick={() => {
                                   const next = block8Draft.trim() || block8Text;
                                   setBlock8Text(next);
+                                  if (lock.isReady && !lock.canEdit) return;
                                   lsSet("getdriver.contracts.nt.block8.v1", next);
                                   setEditingBlock8(false);
                                 }}
@@ -999,6 +1053,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block9Draft.trim() || block9Text;
                                 setBlock9Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block9.v1", next);
                                 setEditingBlock9(false);
                               }}
@@ -1045,6 +1100,7 @@ export default function DataContractsPage() {
                               onClick={() => {
                                 const next = block10Draft.trim() || block10Text;
                                 setBlock10Text(next);
+                                if (lock.isReady && !lock.canEdit) return;
                                 lsSet("getdriver.contracts.nt.block10.v1", next);
                                 setEditingBlock10(false);
                               }}
@@ -1201,7 +1257,7 @@ export default function DataContractsPage() {
 
                           // Quotation PDF (optional)
                           if (r.quotationId) {
-                            const qx = getQuotation(r.quotationId);
+                            const qx = allQuotes.find((q) => q.id === r.quotationId) ?? null;
                             if (qx) {
                               const qFile = `BAO-GIA-${sanitizeFileName(qx.title) || qx.id}`;
                               const resQ = await fetch("/api/quotation-pdf", {
@@ -1697,6 +1753,21 @@ function lsSet(key: string, value: string) {
     localStorage.setItem(key, value);
   } catch {
     // ignore
+  }
+  const m = String(key || "").match(/^getdriver\.contracts\.nt\.block(\d+)\.v1$/);
+  if (m?.[1]) {
+    const n = Number(m[1]);
+    const v = String(value || "");
+    if (n === 1) void upsertNtTemplate({ block1: v });
+    else if (n === 2) void upsertNtTemplate({ block2: v });
+    else if (n === 3) void upsertNtTemplate({ block3: v });
+    else if (n === 4) void upsertNtTemplate({ block4: v });
+    else if (n === 5) void upsertNtTemplate({ block5: v });
+    else if (n === 6) void upsertNtTemplate({ block6: v });
+    else if (n === 7) void upsertNtTemplate({ block7: v });
+    else if (n === 8) void upsertNtTemplate({ block8: v });
+    else if (n === 9) void upsertNtTemplate({ block9: v });
+    else if (n === 10) void upsertNtTemplate({ block10: v });
   }
 }
 

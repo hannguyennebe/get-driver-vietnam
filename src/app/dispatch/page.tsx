@@ -15,14 +15,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ensureDriverStore, listDrivers, type Driver } from "@/lib/fleet/driverStore";
-import { ensureVehicleStore, listVehicles, type Vehicle } from "@/lib/fleet/vehicleStore";
+import type { Driver } from "@/lib/fleet/driverStore";
+import type { Vehicle } from "@/lib/fleet/vehicleStore";
+import { subscribeDrivers } from "@/lib/fleet/driversFirestore";
+import { subscribeVehicles } from "@/lib/fleet/vehiclesFirestore";
 import { Input } from "@/components/ui/input";
-import { ensurePartnersStore, listSuppliers, type Supplier } from "@/lib/data/partnersStore";
+import type { Supplier } from "@/lib/data/partnersStore";
+import { subscribeSuppliers } from "@/lib/data/partnersFirestore";
 import {
-  ensureWalletForExternalDispatch,
-  ensureWalletForRosterDriver,
-} from "@/lib/fleet/driverWalletStore";
+  ensureWalletForExternalDispatchFs,
+  ensureWalletForRosterDriverFs,
+} from "@/lib/fleet/driverWalletsFirestore";
 import { useSearchParams } from "next/navigation";
 import { patchReservation, subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 
@@ -69,32 +72,15 @@ function DispatchInner() {
   });
 
   React.useEffect(() => {
-    ensureDriverStore();
-    ensureVehicleStore();
-    ensurePartnersStore();
-
     const unsub = subscribeActiveReservations(setOrders);
-    setDrivers(listDrivers());
-    setVehicles(listVehicles());
-    setSuppliers(listSuppliers());
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.fleet.drivers")) setDrivers(listDrivers());
-      if (e.key.includes("getdriver.fleet.vehicles")) setVehicles(listVehicles());
-      if (e.key.includes("getdriver.data.partners")) setSuppliers(listSuppliers());
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => {
-      setDrivers(listDrivers());
-      setVehicles(listVehicles());
-      setSuppliers(listSuppliers());
-    };
-    window.addEventListener("focus", onFocus);
+    const unsubD = subscribeDrivers(setDrivers);
+    const unsubV = subscribeVehicles(setVehicles);
+    const unsubS = subscribeSuppliers(setSuppliers);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
       unsub();
+      unsubD();
+      unsubV();
+      unsubS();
     };
   }, []);
 
@@ -460,7 +446,7 @@ function DispatchInner() {
                         assignedSupplierId: null,
                         assignedSupplierPaymentType: null,
                       } as any);
-                      ensureWalletForRosterDriver(d.employeeCode, d.name);
+                      void ensureWalletForRosterDriverFs(d.employeeCode, d.name);
                     } else {
                       const price = Number(extForm.priceVnd.replace(/[^\d]/g, ""));
                       const nm = extForm.name.trim();
@@ -475,7 +461,7 @@ function DispatchInner() {
                         assignedSupplierId: extForm.supplierId || null,
                         assignedSupplierPaymentType: extForm.supplierPaymentType || null,
                       } as any);
-                      ensureWalletForExternalDispatch(nm, ph, pl);
+                      void ensureWalletForExternalDispatchFs(nm, ph, pl);
                     }
                     setOpen(false);
                   }}

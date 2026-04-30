@@ -6,13 +6,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  ensureQuotationStore,
   generateQuotationId,
-  listQuotations,
-  upsertQuotation,
   type Quotation,
 } from "@/lib/data/quotationStore";
-import { ensurePartnersStore, listTravelAgents, type TravelAgent } from "@/lib/data/partnersStore";
+import type { TravelAgent } from "@/lib/data/partnersStore";
+import { subscribeTravelAgents } from "@/lib/data/partnersFirestore";
+import { subscribeQuotations, upsertQuotationFs } from "@/lib/data/quotationsFirestore";
 
 type MatrixRow = {
   id: string;
@@ -147,6 +146,7 @@ function AgentQuotationInner() {
 
   const [travelAgents, setTravelAgents] = React.useState<TravelAgent[]>([]);
   const [yearQuotes, setYearQuotes] = React.useState<Quotation[]>([]);
+  const [allQuotes, setAllQuotes] = React.useState<Quotation[]>([]);
   const [taId, setTaId] = React.useState(params.get("taId") ?? "");
   const [sourceQuoteId, setSourceQuoteId] = React.useState(params.get("source") ?? "");
 
@@ -157,35 +157,20 @@ function AgentQuotationInner() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    ensurePartnersStore();
-    ensureQuotationStore();
-
-    const load = () => {
-      const tas = listTravelAgents();
+    const unsubTa = subscribeTravelAgents((tas) => {
       setTravelAgents(tas);
-      const all = listQuotations();
-      const yrs = all.filter((q) => isYearCommonQuote(q));
+      setTaId((prev) => prev || tas[0]?.id || "");
+    });
+    const unsubQ = subscribeQuotations((qs) => {
+      setAllQuotes(qs);
+      const yrs = qs.filter((q) => isYearCommonQuote(q));
       yrs.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
       setYearQuotes(yrs);
-
-      // Default selections
-      setTaId((prev) => prev || tas[0]?.id || "");
       setSourceQuoteId((prev) => prev || yrs[0]?.id || "");
-    };
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.partners")) load();
-      if (e.key.includes("getdriver.data.quotations")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
+    });
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("storage", onStorage);
+      unsubTa();
+      unsubQ();
     };
   }, []);
 
@@ -363,13 +348,12 @@ function AgentQuotationInner() {
 
                   setSaving(true);
                   try {
-                    const allIds = listQuotations().map((x) => x.id);
-                    const id = generateQuotationId(allIds);
+                    const id = generateQuotationId(allQuotes.map((x) => x.id));
                     const title = makeAgentQuoteTitle(pickedTa.name);
                     const groupTitle = pickedTa.name.trim() || "Travel Agent";
                     const groupId = `Q-${sanitizeGroupId(pickedTa.name)}`;
                     const lines = buildLines(rows, columns);
-                    upsertQuotation({
+                    void upsertQuotationFs({
                       id,
                       groupId,
                       groupTitle,

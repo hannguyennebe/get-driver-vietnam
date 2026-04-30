@@ -23,10 +23,144 @@ service cloud.firestore {
         && p in request.auth.token.perms.edit;
     }
 
+    function canRead(p) {
+      return isAdmin() || hasView(p);
+    }
+
+    function canWrite(p) {
+      return isAdmin() || hasEdit(p);
+    }
+
+    function lockCanWrite(lockId) {
+      // lockId = "{resourceType}:{resourceId}"
+      // resourceType is the first segment
+      let parts = lockId.split(':');
+      let rt = parts.size() > 0 ? parts[0] : "";
+      return isAdmin()
+        || (rt == "reservations" && hasEdit("data.reservations"))
+        || (rt == "travelAgents" && hasEdit("data.travel-agent"))
+        || (rt == "suppliers" && hasEdit("data.supplier"))
+        || (rt == "itineraries" && hasEdit("data.itinerary"))
+        || (rt == "vehicleTypes" && hasEdit("data.itinerary"))
+        || (rt == "quotations" && hasEdit("data.quotation"))
+        || (rt == "contractsNt" && hasEdit("data.contracts"))
+        || (rt == "drivers" && hasEdit("drivers"))
+        || (rt == "vehicles" && hasEdit("vehicles"))
+        || (rt == "driverWallets" && (hasEdit("finance.vi-tai-xe") || hasEdit("drivers")))
+        || (rt == "finance" && (hasEdit("finance.thu") || hasEdit("finance.chi") || hasEdit("finance.so-thu-chi")));
+    }
+
     // Reservations (Booking)
     match /reservations/{docId} {
-      allow read: if isAdmin() || hasView("data.reservations");
-      allow create, update, delete: if isAdmin() || hasEdit("data.reservations");
+      allow read: if canRead("data.reservations");
+      allow create, update, delete: if canWrite("data.reservations");
+    }
+
+    // Locks (pessimistic editing)
+    match /locks/{lockId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if lockCanWrite(lockId);
+    }
+
+    // Master data
+    match /partners_travelAgents/{id} {
+      allow read: if canRead("data.travel-agent");
+      allow create, update, delete: if canWrite("data.travel-agent");
+    }
+
+    match /partners_suppliers/{id} {
+      allow read: if canRead("data.supplier");
+      allow create, update, delete: if canWrite("data.supplier");
+    }
+
+    match /itineraries/{id} {
+      allow read: if canRead("data.itinerary");
+      allow create, update, delete: if canWrite("data.itinerary");
+    }
+
+    match /vehicleTypes/{id} {
+      allow read: if canRead("data.itinerary");
+      allow create, update, delete: if canWrite("data.itinerary");
+    }
+
+    // Quotations
+    match /quotations/{id} {
+      allow read: if canRead("data.quotation");
+      allow create, update, delete: if canWrite("data.quotation");
+    }
+
+    // Contracts
+    match /contracts_nt_templates/{docId} {
+      allow read: if canRead("data.contracts");
+      allow create, update, delete: if canWrite("data.contracts");
+    }
+
+    match /contracts_nt_list/{id} {
+      allow read: if canRead("data.contracts");
+      allow create, update, delete: if canWrite("data.contracts");
+    }
+
+    // Fleet
+    match /drivers/{employeeCode} {
+      allow read: if canRead("drivers");
+      allow create, update, delete: if canWrite("drivers");
+    }
+
+    match /vehicles/{plateId} {
+      allow read: if canRead("vehicles");
+      allow create, update, delete: if canWrite("vehicles");
+    }
+
+    match /driverWallets/{walletKey} {
+      allow read: if isAdmin() || hasView("finance.vi-tai-xe") || hasView("drivers");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.vi-tai-xe") || hasEdit("drivers");
+    }
+
+    // Finance
+    match /cashbookEntries/{id} {
+      allow read: if isAdmin() || hasView("finance.so-thu-chi") || hasView("finance.thu") || hasView("finance.chi");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.so-thu-chi") || hasEdit("finance.thu") || hasEdit("finance.chi");
+    }
+
+    match /thuHoPayments/{id} {
+      allow read: if isAdmin() || hasView("finance.thu");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.thu");
+    }
+
+    match /ap_templates/{id} {
+      allow read: if isAdmin() || hasView("finance.chi") || hasView("finance.phai-tra");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.chi") || hasEdit("finance.phai-tra");
+    }
+
+    match /ap_expenses/{id} {
+      allow read: if isAdmin() || hasView("finance.chi") || hasView("finance.phai-tra") || hasView("finance.thanh-toan");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.chi") || hasEdit("finance.phai-tra") || hasEdit("finance.thanh-toan");
+    }
+
+    match /ap_payments/{id} {
+      allow read: if isAdmin() || hasView("finance.chi") || hasView("finance.thanh-toan");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.chi") || hasEdit("finance.thanh-toan");
+    }
+
+    match /operatingExpenses/{id} {
+      allow read: if isAdmin() || hasView("finance.chi");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.chi");
+    }
+
+    match /otherExpenses/{id} {
+      allow read: if isAdmin() || hasView("finance.chi");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.chi");
+    }
+
+    match /driverAdvances/{id} {
+      allow read: if isAdmin() || hasView("finance.chi");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.chi");
+    }
+
+    // Calendar manual trips
+    match /calendarTrips/{id} {
+      allow read: if isAdmin() || hasView("calendar");
+      allow create, update, delete: if isAdmin() || hasEdit("calendar");
     }
   }
 }

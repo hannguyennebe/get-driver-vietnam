@@ -7,11 +7,8 @@ import {
   type Reservation,
 } from "@/lib/reservations/reservationStore";
 import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
-import {
-  ensurePartnersStore,
-  getPartners,
-  type TravelAgent,
-} from "@/lib/data/partnersStore";
+import type { TravelAgent } from "@/lib/data/partnersStore";
+import { subscribeTravelAgents } from "@/lib/data/partnersFirestore";
 import {
   Dialog,
   DialogContent,
@@ -22,14 +19,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type PartnerPaymentTerms } from "@/lib/data/partnersStore";
-import {
-  addThuHoPayment,
-  ensureThuHoReportStore,
-  listThuHoPayments,
-} from "@/lib/finance/thuHoReportStore";
+import type { ThuHoPayment } from "@/lib/finance/thuHoReportStore";
 import { PaymentConfirmDialog } from "@/components/finance/PaymentConfirmDialog";
-import { addCashbookEntry, listCashbookEntries, type CashbookEntry } from "@/lib/finance/cashbookStore";
-import { adjustDriverWalletBalance } from "@/lib/fleet/driverWalletStore";
+import type { CashbookEntry } from "@/lib/finance/cashbookStore";
+import { addCashbookEntryFs, subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
+import { addThuHoPaymentFs, subscribeThuHoPayments } from "@/lib/finance/thuHoFirestore";
+import { adjustDriverWalletBalanceFs } from "@/lib/fleet/driverWalletsFirestore";
 // PDF is generated server-side (avoid fontkit browser crashes)
 
 export default function FinanceThuPage() {
@@ -42,7 +37,7 @@ export default function FinanceThuPage() {
   const [travelAgentById, setTravelAgentById] = React.useState<
     Record<string, TravelAgent>
   >({});
-  const [thuHoPayments, setThuHoPayments] = React.useState(() => [] as ReturnType<typeof listThuHoPayments>);
+  const [thuHoPayments, setThuHoPayments] = React.useState<ThuHoPayment[]>([]);
   const [cashbook, setCashbook] = React.useState<CashbookEntry[]>([]);
 
   const [openDetail, setOpenDetail] = React.useState(false);
@@ -69,33 +64,18 @@ export default function FinanceThuPage() {
   const [agentPdfAgentId, setAgentPdfAgentId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    ensurePartnersStore();
-    ensureThuHoReportStore();
-
-    const load = () => {
-      const p = getPartners();
-      setTravelAgentById(Object.fromEntries(p.travelAgents.map((x) => [x.id, x])));
-      setThuHoPayments(listThuHoPayments());
-      setCashbook(listCashbookEntries());
-      setPaidFlags(readPaidFlags());
-    };
-    load();
-    const unsub = subscribeActiveReservations(setReservations);
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.partners")) load();
-      if (e.key.includes("getdriver.finance.thuho.payments")) load();
-      if (e.key.includes("getdriver.finance.cashbook")) load();
-      if (e.key.includes("getdriver.finance.thu.paidflags")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
+    setPaidFlags(readPaidFlags());
+    const unsubR = subscribeActiveReservations(setReservations);
+    const unsubTa = subscribeTravelAgents((tas) =>
+      setTravelAgentById(Object.fromEntries(tas.map((x) => [x.id, x]))),
+    );
+    const unsubThuHo = subscribeThuHoPayments(setThuHoPayments);
+    const unsubCb = subscribeCashbookEntries(setCashbook);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-      unsub();
+      unsubR();
+      unsubTa();
+      unsubThuHo();
+      unsubCb();
     };
   }, []);
 
@@ -722,7 +702,7 @@ export default function FinanceThuPage() {
           const ta = booking?.travelAgentId ? travelAgentById[booking.travelAgentId] : undefined;
 
           // Persist payment record (thu hộ)
-          addThuHoPayment({
+          void addThuHoPaymentFs({
             bookingCode: thuHoBookingCode,
             travelAgentId: booking?.travelAgentId || undefined,
             travelAgentName: ta?.name ?? undefined,
@@ -730,10 +710,9 @@ export default function FinanceThuPage() {
             amount: r.amount,
             method: r.sourceId === "CASH" ? "TM" : "CK",
           });
-          setThuHoPayments(listThuHoPayments());
 
           // Cashbook entry: thu tiền vào nguồn đã chọn
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction: "IN",
             sourceId: r.sourceId,
             currency: r.currency as any,
@@ -748,7 +727,7 @@ export default function FinanceThuPage() {
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
             // Thu vào ví = tăng số dư
-            adjustDriverWalletBalance(walletKey, r.currency, r.amount);
+            void adjustDriverWalletBalanceFs(walletKey, r.currency, r.amount);
           }
         }}
       />
@@ -780,7 +759,7 @@ export default function FinanceThuPage() {
         }
         onConfirm={(r) => {
           if (!arBookingCode) return;
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction: "IN",
             sourceId: r.sourceId,
             currency: r.currency as any,
@@ -793,11 +772,8 @@ export default function FinanceThuPage() {
 
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, r.currency, r.amount);
+            void adjustDriverWalletBalanceFs(walletKey, r.currency, r.amount);
           }
-
-          // refresh in-page view immediately
-          setCashbook(listCashbookEntries());
         }}
       />
 
@@ -850,7 +826,7 @@ export default function FinanceThuPage() {
           const net = displayCur === "VND" ? netVnd : netUsd;
           const direction = net < 0 ? "OUT" : "IN";
 
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction,
             sourceId: r.sourceId,
             currency: r.currency as any,
@@ -862,9 +838,8 @@ export default function FinanceThuPage() {
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, r.currency, direction === "IN" ? r.amount : -r.amount);
+            void adjustDriverWalletBalanceFs(walletKey, r.currency, direction === "IN" ? r.amount : -r.amount);
           }
-          setCashbook(listCashbookEntries());
         }}
       />
 

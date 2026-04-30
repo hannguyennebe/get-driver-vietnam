@@ -3,14 +3,15 @@
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import {
-  deleteSupplier,
-  ensurePartnersStore,
   generateSupplierId,
-  listSuppliers,
-  upsertSupplier,
   type PartnerPaymentTerms,
   type Supplier,
 } from "@/lib/data/partnersStore";
+import {
+  deleteSupplierFs,
+  subscribeSuppliers,
+  upsertSupplierFs,
+} from "@/lib/data/partnersFirestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,12 +22,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Pencil, Trash2 } from "lucide-react";
+import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
+import { acquireLock, releaseLock, type AcquireLockResult } from "@/lib/firestore/locks";
 
 export default function SupplierPage() {
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [open, setOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [lockState, setLockState] = React.useState<AcquireLockResult | null>(null);
 
   const [form, setForm] = React.useState({
     name: "",
@@ -38,21 +42,9 @@ export default function SupplierPage() {
   });
 
   React.useEffect(() => {
-    ensurePartnersStore();
-    const load = () => setSuppliers(listSuppliers());
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.partners")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-
+    const unsub = subscribeSuppliers(setSuppliers);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, []);
 
@@ -142,8 +134,7 @@ export default function SupplierPage() {
                           className="rounded-md p-2 text-zinc-600 hover:bg-zinc-100 hover:text-red-600 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-red-400"
                           aria-label="Xoá"
                           onClick={() => {
-                            deleteSupplier(s.id);
-                            setSuppliers(listSuppliers());
+                            void deleteSupplierFs(s.id);
                           }}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -177,6 +168,13 @@ export default function SupplierPage() {
           </DialogHeader>
 
           <div className="grid gap-3">
+            {editingId ? (
+              <SupplierLockBanner
+                editingId={editingId}
+                lockState={lockState}
+                setLockState={setLockState}
+              />
+            ) : null}
             <Field label="Tên">
               <Input
                 value={form.name}
@@ -307,14 +305,18 @@ export default function SupplierPage() {
               </Button>
               <Button
                 className="h-9 text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
+                disabled={Boolean(editingId && lockState && !lockState.ok)}
                 onClick={() => {
                   setError(null);
+                  if (editingId && lockState && !lockState.ok) {
+                    return setError(`Dữ liệu đang được sửa bởi ${lockState.lock.ownerName}.`);
+                  }
                   if (!form.name.trim()) return setError("Vui lòng nhập Tên.");
 
                   const id =
                     editingId ?? generateSupplierId(suppliers.map((x) => x.id));
 
-                  upsertSupplier({
+                  void upsertSupplierFs({
                     id,
                     name: form.name.trim(),
                     contactName: form.contactName.trim() || undefined,
@@ -323,7 +325,6 @@ export default function SupplierPage() {
                     paymentType: form.paymentType,
                     paymentTerms: form.terms,
                   });
-                  setSuppliers(listSuppliers());
                   setOpen(false);
                 }}
               >
@@ -334,6 +335,66 @@ export default function SupplierPage() {
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+function SupplierLockBanner({
+  editingId,
+  lockState,
+  setLockState,
+}: {
+  editingId: string;
+  lockState: AcquireLockResult | null;
+  setLockState: (v: AcquireLockResult | null) => void;
+}) {
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const me = getCurrentUserIdentity();
+      if (!me) return;
+      const res = await acquireLock({
+        resource: "suppliers",
+        resourceId: editingId,
+        ownerUid: me.uid,
+        ownerName: me.name,
+        leaseMs: 2 * 60 * 1000,
+      });
+      if (cancelled) return;
+      setLockState(res);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId, setLockState]);
+
+  React.useEffect(() => {
+    return () => {
+      const me = getCurrentUserIdentity();
+      if (!me) return;
+      if (!lockState?.ok) return;
+      void releaseLock({ resource: "suppliers", resourceId: editingId, ownerUid: me.uid });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
+
+  if (!lockState) {
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300">
+        Đang kiểm tra lock…
+      </div>
+    );
+  }
+  if (lockState.ok) {
+    return (
+      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+        Bạn đang sửa dữ liệu này.
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+      Dữ liệu đang được sửa bởi <b>{lockState.lock.ownerName}</b>.
+    </div>
   );
 }
 

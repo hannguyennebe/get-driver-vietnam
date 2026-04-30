@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
-import { ensureTripsStore, listTrips, deleteTrip } from "@/lib/calendar/tripsStore";
+import { deleteCalendarTripFs, subscribeCalendarTrips } from "@/lib/calendar/tripsFirestore";
+import type { Trip } from "@/lib/calendar/tripsStore";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Pencil } from "lucide-react";
 import {
@@ -58,6 +59,7 @@ export default function DashboardPage() {
   }>>([]);
   const [activeReservations, setActiveReservations] = React.useState<any[]>([]);
   const [cancelledReservations, setCancelledReservations] = React.useState<any[]>([]);
+  const [calendarTrips, setCalendarTrips] = React.useState<Trip[]>([]);
 
   React.useEffect(() => {
     // Keep in sync with user's local timezone date (realtime; flips at midnight)
@@ -68,12 +70,10 @@ export default function DashboardPage() {
   }, []);
 
   React.useEffect(() => {
-    ensureTripsStore();
-
     const load = () => {
       const active = activeReservations as any[];
       const cancelled = cancelledReservations as any[];
-      const trips = listTrips();
+      const trips = calendarTrips;
 
       const cancelledCodes = new Set(cancelled.map((x) => x.code));
       const reservationCodes = new Set(active.map((x) => x.code));
@@ -81,18 +81,18 @@ export default function DashboardPage() {
       const tomorrowIso = toIsoDate(addDays(new Date(), 1));
       const monthPrefix = todayIso.slice(0, 7);
 
-      const demoTrips = trips.filter((t) => !reservationCodes.has(t.id));
+      const manualTrips = trips.filter((t) => !reservationCodes.has(t.id));
 
       const countUnionByIso = (iso: string) => {
         const res = active.filter((r) => dmyToIso(r.date) === iso).length;
-        const demo = demoTrips.filter((t) => t.date === iso && !cancelledCodes.has(t.id)).length;
-        return res + demo;
+        const manual = manualTrips.filter((t) => t.date === iso && !cancelledCodes.has(t.id)).length;
+        return res + manual;
       };
 
       const countUnionByMonth = (prefix: string) => {
         const res = active.filter((r) => dmyToIso(r.date).startsWith(prefix)).length;
-        const demo = demoTrips.filter((t) => t.date.startsWith(prefix) && !cancelledCodes.has(t.id)).length;
-        return res + demo;
+        const manual = manualTrips.filter((t) => t.date.startsWith(prefix) && !cancelledCodes.has(t.id)).length;
+        return res + manual;
       };
 
       const monthCancelled = cancelled.filter((r) => dmyToIso(r.date).startsWith(monthPrefix)).length;
@@ -123,7 +123,7 @@ export default function DashboardPage() {
           note: r.note,
           thuHoVnd: r.thuHoCurrency === "VND" ? r.thuHoAmount : 0,
         }));
-      const demoDay = demoTrips
+      const demoDay = manualTrips
         .filter((t) => t.date === todayIso && !cancelledCodes.has(t.id))
         .map((t) => ({
           id: t.id,
@@ -169,28 +169,21 @@ export default function DashboardPage() {
     };
 
     load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.calendar.trips")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      // no-op
     };
-  }, [todayIso, activeReservations, cancelledReservations]);
+  }, [todayIso, activeReservations, cancelledReservations, calendarTrips]);
 
   React.useEffect(() => {
     const unsubA = subscribeActiveReservations((rows) => setActiveReservations(rows as any));
     const unsubC = subscribeCancelledReservations((rows) =>
       setCancelledReservations(rows as any),
     );
+    const unsubT = subscribeCalendarTrips(setCalendarTrips);
     return () => {
       unsubA();
       unsubC();
+      unsubT();
     };
   }, []);
 
@@ -267,7 +260,7 @@ export default function DashboardPage() {
                     if (t.kind === "reservation") {
                       void cancelReservationFirestore(t.id, { cancelledFrom: "reservation" });
                     } else {
-                      deleteTrip(t.id);
+                      void deleteCalendarTripFs(t.id);
                     }
                   }}
                   onEditBooking={() =>

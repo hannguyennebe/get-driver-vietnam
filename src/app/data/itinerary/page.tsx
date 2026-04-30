@@ -3,21 +3,23 @@
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import {
-  deleteItinerary,
-  ensureItineraryStore,
   generateItineraryId,
-  listItineraries,
-  upsertItinerary,
   type Itinerary,
 } from "@/lib/data/itineraryStore";
 import {
-  deleteVehicleType,
-  ensureVehicleTypeStore,
   generateVehicleTypeId,
-  listVehicleTypes,
-  upsertVehicleType,
   type VehicleType,
 } from "@/lib/data/vehicleTypeStore";
+import {
+  deleteItineraryFs,
+  subscribeItineraries,
+  upsertItineraryFs,
+} from "@/lib/data/itineraryFirestore";
+import {
+  deleteVehicleTypeFs,
+  subscribeVehicleTypes,
+  upsertVehicleTypeFs,
+} from "@/lib/data/vehicleTypeFirestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -43,27 +45,11 @@ export default function DataItineraryPage() {
   const [typeError, setTypeError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    ensureItineraryStore();
-    ensureVehicleTypeStore();
-
-    const load = () => {
-      setRows(listItineraries());
-      setTypeRows(listVehicleTypes());
-    };
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.itineraries")) load();
-      if (e.key.includes("getdriver.data.vehicle-types")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-
+    const unsubIt = subscribeItineraries(setRows);
+    const unsubVt = subscribeVehicleTypes(setTypeRows);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      unsubIt();
+      unsubVt();
     };
   }, []);
 
@@ -126,8 +112,7 @@ export default function DataItineraryPage() {
                           className="rounded-md p-2 text-zinc-600 hover:bg-zinc-100 hover:text-red-600 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-red-400"
                           aria-label="Xoá"
                           onClick={() => {
-                            deleteItinerary(r.id);
-                            setRows(listItineraries());
+                            void deleteItineraryFs(r.id);
                           }}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -210,8 +195,7 @@ export default function DataItineraryPage() {
                             className="rounded-md p-2 text-zinc-600 hover:bg-zinc-100 hover:text-red-600 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-red-400"
                             aria-label="Xoá"
                             onClick={() => {
-                              deleteVehicleType(r.id);
-                              setTypeRows(listVehicleTypes());
+                              void deleteVehicleTypeFs(r.id);
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -267,17 +251,14 @@ export default function DataItineraryPage() {
                   setError(null);
                   if (!name.trim()) return setError("Vui lòng nhập hành trình.");
 
-                  const all = listItineraries();
                   const id =
-                    editingId ?? generateItineraryId(all.map((x) => x.id));
+                    editingId ?? generateItineraryId(rows.map((x) => x.id));
 
-                  const existing = all.find((x) => x.id === id);
-                  upsertItinerary({
+                  void upsertItineraryFs({
                     id,
                     name: name.trim(),
-                    createdAt: existing?.createdAt ?? Date.now(),
+                    createdAt: Date.now(),
                   });
-                  setRows(listItineraries());
                   setOpen(false);
                 }}
               >
@@ -322,17 +303,14 @@ export default function DataItineraryPage() {
                   setTypeError(null);
                   if (!typeName.trim()) return setTypeError("Vui lòng nhập loại xe.");
 
-                  const all = listVehicleTypes();
                   const id =
-                    editingTypeId ?? generateVehicleTypeId(all.map((x) => x.id));
+                    editingTypeId ?? generateVehicleTypeId(typeRows.map((x) => x.id));
 
-                  const existing = all.find((x) => x.id === id);
-                  upsertVehicleType({
+                  void upsertVehicleTypeFs({
                     id,
                     name: typeName.trim(),
-                    createdAt: existing?.createdAt ?? Date.now(),
+                    createdAt: Date.now(),
                   });
-                  setTypeRows(listVehicleTypes());
                   setOpenType(false);
                 }}
               >

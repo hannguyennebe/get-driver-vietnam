@@ -6,7 +6,7 @@ import {
   type CancelledReservation,
   type Reservation,
 } from "@/lib/reservations/reservationStore";
-import { ensurePartnersStore, getPartners } from "@/lib/data/partnersStore";
+import { subscribeTravelAgents } from "@/lib/data/partnersFirestore";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import {
@@ -24,38 +24,14 @@ export default function DataReservationsPage() {
   >({});
 
   React.useEffect(() => {
-    ensurePartnersStore();
-
-    const p = getPartners();
-    setTravelAgentNameById(
-      Object.fromEntries(p.travelAgents.map((x) => [x.id, x.name])),
+    const unsubTa = subscribeTravelAgents((tas) =>
+      setTravelAgentNameById(Object.fromEntries(tas.map((x) => [x.id, x.name]))),
     );
-
     const unsubA = subscribeActiveReservations(setReservations);
     const unsubC = subscribeCancelledReservations(setCancelled);
 
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.partners")) {
-        const pp = getPartners();
-        setTravelAgentNameById(
-          Object.fromEntries(pp.travelAgents.map((x) => [x.id, x.name])),
-        );
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => {
-      // Partners are still local for now
-      const pp = getPartners();
-      setTravelAgentNameById(
-        Object.fromEntries(pp.travelAgents.map((x) => [x.id, x.name])),
-      );
-    };
-    window.addEventListener("focus", onFocus);
-
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      unsubTa();
       unsubA();
       unsubC();
     };

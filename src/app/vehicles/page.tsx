@@ -15,13 +15,13 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
-  addVehicle,
-  deleteVehicle,
-  ensureVehicleStore,
-  listVehicles,
-  updateVehicle,
   type Vehicle,
 } from "@/lib/fleet/vehicleStore";
+import {
+  deleteVehicleFs,
+  subscribeVehicles,
+  upsertVehicleFs,
+} from "@/lib/fleet/vehiclesFirestore";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useDocLock } from "@/lib/firestore/useDocLock";
 
 export default function VehiclesPage() {
   const router = useRouter();
@@ -38,6 +39,7 @@ export default function VehiclesPage() {
   const [openEdit, setOpenEdit] = React.useState(false);
   const [editKey, setEditKey] = React.useState<string | null>(null);
   const [addError, setAddError] = React.useState<string | null>(null);
+  const lock = useDocLock({ resource: "vehicles", resourceId: openEdit ? editKey : null, enabled: true });
   const [form, setForm] = React.useState({
     plate: "",
     name: "",
@@ -47,8 +49,8 @@ export default function VehiclesPage() {
   });
 
   React.useEffect(() => {
-    ensureVehicleStore();
-    setVehicles(listVehicles());
+    const unsub = subscribeVehicles(setVehicles);
+    return () => unsub();
   }, []);
 
   const filtered = vehicles.filter((v) => {
@@ -174,8 +176,7 @@ export default function VehiclesPage() {
                   lastOilChangeKm: v.km,
                   updatedAt: Date.now(),
                 };
-                updateVehicle(v.plate, next);
-                setVehicles(listVehicles());
+                void upsertVehicleFs(next);
               }}
               onServiced={() => {
                 const next: Vehicle = {
@@ -183,12 +184,10 @@ export default function VehiclesPage() {
                   lastServiceKm: v.km,
                   updatedAt: Date.now(),
                 };
-                updateVehicle(v.plate, next);
-                setVehicles(listVehicles());
+                void upsertVehicleFs(next);
               }}
               onDelete={() => {
-                deleteVehicle(v.plate);
-                setVehicles(listVehicles());
+                void deleteVehicleFs(v.plate);
               }}
             />
           ))}
@@ -298,8 +297,11 @@ export default function VehiclesPage() {
                   };
 
                   try {
-                    addVehicle(v);
-                    setVehicles(listVehicles());
+                    const exists = vehicles.some(
+                      (x) => x.plate.trim().toLowerCase() === plate.toLowerCase(),
+                    );
+                    if (exists) throw new Error("duplicate_plate");
+                    void upsertVehicleFs(v);
                     setOpenAdd(false);
                   } catch (e) {
                     setAddError("Biển số xe đã tồn tại.");
@@ -329,6 +331,21 @@ export default function VehiclesPage() {
             </DialogHeader>
 
             <div className="space-y-3">
+              {editKey ? (
+                !lock.isReady ? (
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300">
+                    Đang kiểm tra lock…
+                  </div>
+                ) : lock.canEdit ? (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+                    Bạn đang sửa dữ liệu này.
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                    Dữ liệu đang được sửa bởi <b>{lock.lockedByName ?? "—"}</b>.
+                  </div>
+                )
+              ) : null}
               <div className="space-y-1">
                 <label className="text-sm font-medium">Biển số xe</label>
                 <Input
@@ -382,9 +399,11 @@ export default function VehiclesPage() {
 
               <Button
                 className="w-full text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
+                disabled={Boolean(editKey && lock.isReady && !lock.canEdit)}
                 onClick={() => {
                   setAddError(null);
                   if (!editKey) return;
+                  if (lock.isReady && !lock.canEdit) return setAddError(`Dữ liệu đang được sửa bởi ${lock.lockedByName ?? "—"}.`);
                   const plate = form.plate.trim();
                   const name = form.name.trim();
                   const year = Number(form.year);
@@ -398,7 +417,7 @@ export default function VehiclesPage() {
                     return setAddError("Số km không hợp lệ.");
                   }
 
-                  const current = listVehicles().find(
+                  const current = vehicles.find(
                     (x) => x.plate.toLowerCase() === editKey.toLowerCase(),
                   );
                   if (!current) return setAddError("Không tìm thấy xe.");
@@ -418,8 +437,15 @@ export default function VehiclesPage() {
                   };
 
                   try {
-                    updateVehicle(editKey, next);
-                    setVehicles(listVehicles());
+                    const plateChanged =
+                      current.plate.trim().toLowerCase() !== plate.toLowerCase();
+                    const duplicate =
+                      plateChanged &&
+                      vehicles.some(
+                        (x) => x.plate.trim().toLowerCase() === plate.toLowerCase(),
+                      );
+                    if (duplicate) throw new Error("duplicate_plate");
+                    void upsertVehicleFs(next);
                     setOpenEdit(false);
                   } catch (e) {
                     setAddError("Biển số xe đã tồn tại.");

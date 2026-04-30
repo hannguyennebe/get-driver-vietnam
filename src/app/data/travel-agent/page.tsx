@@ -3,14 +3,15 @@
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import {
-  deleteTravelAgent,
-  ensurePartnersStore,
   generateTravelAgentId,
-  listTravelAgents,
-  upsertTravelAgent,
   type PartnerPaymentTerms,
   type TravelAgent,
 } from "@/lib/data/partnersStore";
+import {
+  deleteTravelAgentFs,
+  subscribeTravelAgents,
+  upsertTravelAgentFs,
+} from "@/lib/data/partnersFirestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,12 +22,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Pencil, Trash2 } from "lucide-react";
+import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
+import { acquireLock, releaseLock, type AcquireLockResult } from "@/lib/firestore/locks";
 
 export default function TravelAgentPage() {
   const [agents, setAgents] = React.useState<TravelAgent[]>([]);
   const [open, setOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [lockState, setLockState] = React.useState<AcquireLockResult | null>(null);
 
   const [form, setForm] = React.useState({
     name: "",
@@ -42,21 +46,9 @@ export default function TravelAgentPage() {
   });
 
   React.useEffect(() => {
-    ensurePartnersStore();
-    const load = () => setAgents(listTravelAgents());
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.partners")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-
+    const unsub = subscribeTravelAgents(setAgents);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      unsub();
     };
   }, []);
 
@@ -162,8 +154,7 @@ export default function TravelAgentPage() {
                           className="rounded-md p-2 text-zinc-600 hover:bg-zinc-100 hover:text-red-600 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-red-400"
                           aria-label="Xoá"
                           onClick={() => {
-                            deleteTravelAgent(a.id);
-                            setAgents(listTravelAgents());
+                            void deleteTravelAgentFs(a.id);
                           }}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -201,6 +192,9 @@ export default function TravelAgentPage() {
           </DialogHeader>
 
           <div className="grid gap-3">
+            {editingId ? (
+              <LockBanner editingId={editingId} lockState={lockState} setLockState={setLockState} />
+            ) : null}
             <Field label="Tên Đại Lý">
               <Input
                 value={form.name}
@@ -375,8 +369,12 @@ export default function TravelAgentPage() {
               </Button>
               <Button
                 className="h-9 text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
+                disabled={Boolean(editingId && lockState && !lockState.ok)}
                 onClick={() => {
                   setError(null);
+                  if (editingId && lockState && !lockState.ok) {
+                    return setError(`Dữ liệu đang được sửa bởi ${lockState.lock.ownerName}.`);
+                  }
                   if (!form.name.trim())
                     return setError("Vui lòng nhập Tên Đại Lý.");
 
@@ -384,7 +382,7 @@ export default function TravelAgentPage() {
                     editingId ??
                     generateTravelAgentId(agents.map((x) => x.id));
 
-                  upsertTravelAgent({
+                  void upsertTravelAgentFs({
                     id,
                     name: form.name.trim(),
                     businessModel: form.businessModel.trim() || undefined,
@@ -397,7 +395,6 @@ export default function TravelAgentPage() {
                     taxIncluded: form.taxIncluded === "Có",
                     paymentTerms: form.terms,
                   });
-                  setAgents(listTravelAgents());
                   setOpen(false);
                 }}
               >
@@ -408,6 +405,85 @@ export default function TravelAgentPage() {
         </DialogContent>
       </Dialog>
     </AppShell>
+  );
+}
+
+function LockBanner({
+  editingId,
+  lockState,
+  setLockState,
+}: {
+  editingId: string;
+  lockState: AcquireLockResult | null;
+  setLockState: (v: AcquireLockResult | null) => void;
+}) {
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const me = getCurrentUserIdentity();
+      if (!me) return;
+      const res = await acquireLock({
+        resource: "travelAgents",
+        resourceId: editingId,
+        ownerUid: me.uid,
+        ownerName: me.name,
+        leaseMs: 2 * 60 * 1000,
+      });
+      if (cancelled) return;
+      setLockState(res);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId, setLockState]);
+
+  React.useEffect(() => {
+    if (!editingId) return;
+    const me = getCurrentUserIdentity();
+    if (!me) return;
+    if (!lockState?.ok) return;
+    const t = window.setInterval(() => {
+      // keep-alive
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      acquireLock({
+        resource: "travelAgents",
+        resourceId: editingId,
+        ownerUid: me.uid,
+        ownerName: me.name,
+        leaseMs: 2 * 60 * 1000,
+      }).then((res) => setLockState(res));
+    }, 60_000);
+    return () => window.clearInterval(t);
+  }, [editingId, lockState, setLockState]);
+
+  React.useEffect(() => {
+    return () => {
+      const me = getCurrentUserIdentity();
+      if (!me) return;
+      if (!lockState?.ok) return;
+      void releaseLock({ resource: "travelAgents", resourceId: editingId, ownerUid: me.uid });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId]);
+
+  if (!lockState) {
+    return (
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300">
+        Đang kiểm tra lock…
+      </div>
+    );
+  }
+  if (lockState.ok) {
+    return (
+      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+        Bạn đang sửa dữ liệu này.
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+      Dữ liệu đang được sửa bởi <b>{lockState.lock.ownerName}</b>.
+    </div>
   );
 }
 

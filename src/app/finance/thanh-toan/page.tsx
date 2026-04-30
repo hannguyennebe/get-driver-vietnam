@@ -5,17 +5,18 @@ import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PaymentConfirmDialog } from "@/components/finance/PaymentConfirmDialog";
-import { addCashbookEntry } from "@/lib/finance/cashbookStore";
-import { adjustDriverWalletBalance } from "@/lib/fleet/driverWalletStore";
+import { addCashbookEntryFs } from "@/lib/finance/cashbookFirestore";
+import { adjustDriverWalletBalanceFs } from "@/lib/fleet/driverWalletsFirestore";
 import {
-  addPayment,
-  ensureApStore,
-  listExpenses,
-  listPayments,
   type ExpenseInstance,
   type PaymentMethod,
   type PaymentTransaction,
 } from "@/lib/finance/apStore";
+import {
+  addApPaymentFs,
+  subscribeApExpenses,
+  subscribeApPayments,
+} from "@/lib/finance/apFirestore";
 import { useSearchParams, useRouter } from "next/navigation";
 
 export default function FinanceThanhToanPage() {
@@ -49,26 +50,23 @@ function FinanceThanhToanInner() {
   const [openPay, setOpenPay] = React.useState(false);
 
   React.useEffect(() => {
-    ensureApStore();
-    const load = () => {
-      const all = listExpenses().filter((x) => x.status !== "Cancelled");
-      setChoices(all.filter((x) => x.status !== "Paid"));
-      const exp = all.find((x) => x.id === expenseId) ?? null;
-      setExpense(exp);
-      setPayments(listPayments().filter((p) => p.expenseId === expenseId));
-    };
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.finance.ap.")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      // no-op
+    };
+  }, [expenseId]);
+
+  React.useEffect(() => {
+    const unsubE = subscribeApExpenses((all) => {
+      const active = all.filter((x) => x.status !== "Cancelled");
+      setChoices(active.filter((x) => x.status !== "Paid"));
+      setExpense(active.find((x) => x.id === expenseId) ?? null);
+    });
+    const unsubP = subscribeApPayments((all) =>
+      setPayments(all.filter((p) => p.expenseId === expenseId)),
+    );
+    return () => {
+      unsubE();
+      unsubP();
     };
   }, [expenseId]);
 
@@ -263,7 +261,7 @@ function FinanceThanhToanInner() {
           if (!form.paidAtISO) return setError("Vui lòng chọn ngày thanh toán.");
 
           // AP payment transaction
-          addPayment({
+          void addApPaymentFs({
             expenseId: expense.id,
             paidAtISO: form.paidAtISO,
             amountVnd,
@@ -272,7 +270,7 @@ function FinanceThanhToanInner() {
           });
 
           // Cashbook entry: chi tiền từ nguồn đã chọn
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: "VND",
@@ -286,11 +284,8 @@ function FinanceThanhToanInner() {
           // If wallet source: reduce wallet balance
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, "VND", -amountVnd);
+            void adjustDriverWalletBalanceFs(walletKey, "VND", -amountVnd);
           }
-
-          setPayments(listPayments().filter((p) => p.expenseId === expense.id));
-          setExpense(listExpenses().find((x) => x.id === expense.id) ?? null);
           setForm({ paidAtISO: todayIso(), amountVnd: "", reference: "" });
         }}
       />

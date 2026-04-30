@@ -8,12 +8,8 @@ import {
   type Reservation,
 } from "@/lib/reservations/reservationStore";
 import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
-import {
-  ensurePartnersStore,
-  getPartners,
-  type PartnerPaymentTerms,
-  type Supplier,
-} from "@/lib/data/partnersStore";
+import { type PartnerPaymentTerms, type Supplier } from "@/lib/data/partnersStore";
+import { subscribeSuppliers } from "@/lib/data/partnersFirestore";
 import {
   Dialog,
   DialogContent,
@@ -25,36 +21,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getDemoSession } from "@/lib/auth/demo";
 import { PaymentConfirmDialog } from "@/components/finance/PaymentConfirmDialog";
-import { addCashbookEntry, listCashbookEntries, type CashbookEntry } from "@/lib/finance/cashbookStore";
-import { adjustDriverWalletBalance, ensureDriverWalletStore, listDriverWallets } from "@/lib/fleet/driverWalletStore";
-import {
-  addOtherExpense,
-  ensureOtherExpensesStore,
-  listOtherExpenses,
-  type OtherExpense,
-  type OtherExpenseCurrency,
-} from "@/lib/finance/otherExpensesStore";
-import { ensureDriverStore, listDrivers, type Driver } from "@/lib/fleet/driverStore";
-import {
-  addDriverAdvance,
-  ensureDriverAdvancesStore,
-  listDriverAdvances,
-  type DriverAdvance,
-} from "@/lib/finance/driverAdvancesStore";
-import {
-  addOperatingExpense,
-  ensureOperatingExpensesStore,
-  listOperatingExpenses,
-  type OperatingExpense,
-  type OperatingExpenseType,
-  type OperatingPaymentMethod,
-} from "@/lib/finance/operatingExpensesStore";
-import {
-  ensureVehicleStore,
-  listVehicles,
-  updateVehicle,
-  type Vehicle,
-} from "@/lib/fleet/vehicleStore";
+import type { CashbookEntry } from "@/lib/finance/cashbookStore";
+import { addCashbookEntryFs, subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
+import type { DriverWallet } from "@/lib/fleet/driverWalletStore";
+import { adjustDriverWalletBalanceFs, subscribeDriverWallets } from "@/lib/fleet/driverWalletsFirestore";
+import type { OtherExpense, OtherExpenseCurrency } from "@/lib/finance/otherExpensesStore";
+import { addOtherExpenseFs, subscribeOtherExpenses } from "@/lib/finance/otherExpensesFirestore";
+import type { Driver } from "@/lib/fleet/driverStore";
+import { subscribeDrivers } from "@/lib/fleet/driversFirestore";
+import type { DriverAdvance } from "@/lib/finance/driverAdvancesStore";
+import { addDriverAdvanceFs, subscribeDriverAdvances } from "@/lib/finance/driverAdvancesFirestore";
+import type { OperatingExpense, OperatingExpenseType, OperatingPaymentMethod } from "@/lib/finance/operatingExpensesStore";
+import { addOperatingExpenseFs, subscribeOperatingExpenses } from "@/lib/finance/operatingExpensesFirestore";
+import type { Vehicle } from "@/lib/fleet/vehicleStore";
+import { subscribeVehicles, upsertVehicleFs } from "@/lib/fleet/vehiclesFirestore";
 
 export default function FinanceChiPage() {
   const router = useRouter();
@@ -66,6 +46,7 @@ export default function FinanceChiPage() {
   const [currentUser, setCurrentUser] = React.useState("—");
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
   const [cashbook, setCashbook] = React.useState<CashbookEntry[]>([]);
+  const [wallets, setWallets] = React.useState<DriverWallet[]>([]);
   const [supplierById, setSupplierById] = React.useState<Record<string, Supplier>>(
     {},
   );
@@ -117,6 +98,12 @@ export default function FinanceChiPage() {
     () => drivers.find((d) => d.employeeCode === payrollDriverCode) ?? null,
     [drivers, payrollDriverCode],
   );
+
+  function getWalletByKey(walletKey: string) {
+    const k = String(walletKey || "").trim();
+    if (!k) return undefined;
+    return wallets.find((w) => w.key === k);
+  }
 
   const [advances, setAdvances] = React.useState<DriverAdvance[]>([]);
   const [openAddAdvance, setOpenAddAdvance] = React.useState(false);
@@ -207,48 +194,33 @@ export default function FinanceChiPage() {
   const [payrollPdfError, setPayrollPdfError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    ensurePartnersStore();
-    ensureOtherExpensesStore();
-    ensureDriverStore();
-    ensureDriverAdvancesStore();
-    ensureOperatingExpensesStore();
-    ensureVehicleStore();
-
-    const load = () => {
-      const p = getPartners();
-      setSupplierById(Object.fromEntries(p.suppliers.map((x) => [x.id, x])));
-      setOtherExpenses(listOtherExpenses());
-      setCashbook(listCashbookEntries());
-      setPaidFlags(readPaidFlags());
-      const ds = listDrivers().filter((d) => d.type === "internal");
+    setCurrentUser(getDemoSession()?.username ?? "—");
+    setPaidFlags(readPaidFlags());
+    const unsubR = subscribeActiveReservations(setReservations);
+    const unsubSup = subscribeSuppliers((rows) =>
+      setSupplierById(Object.fromEntries(rows.map((x) => [x.id, x]))),
+    );
+    const unsubOe = subscribeOtherExpenses(setOtherExpenses);
+    const unsubCb = subscribeCashbookEntries(setCashbook);
+    const unsubDrivers = subscribeDrivers((rows) => {
+      const ds = rows.filter((d) => d.type === "internal");
       setDrivers(ds);
       setPayrollDriverCode((prev) => prev || ds[0]?.employeeCode || "");
-      setAdvances(listDriverAdvances());
-      setOperatingExpenses(listOperatingExpenses());
-      setVehicles(listVehicles());
-    };
-    setCurrentUser(getDemoSession()?.username ?? "—");
-    load();
-    const unsub = subscribeActiveReservations(setReservations);
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.reservations.v1")) load();
-      if (e.key.includes("getdriver.data.partners")) load();
-      if (e.key.includes("getdriver.finance.other-expenses")) load();
-      if (e.key.includes("getdriver.finance.driver-advances")) load();
-      if (e.key.includes("getdriver.finance.operating-expenses")) load();
-      if (e.key.includes("getdriver.fleet.vehicles")) load();
-      if (e.key.includes("getdriver.finance.cashbook")) load();
-      if (e.key.includes("getdriver.finance.chi.paidflags")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
+    });
+    const unsubAdv = subscribeDriverAdvances(setAdvances);
+    const unsubOp = subscribeOperatingExpenses(setOperatingExpenses);
+    const unsubVeh = subscribeVehicles(setVehicles);
+    const unsubW = subscribeDriverWallets(setWallets);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-      unsub();
+      unsubR();
+      unsubSup();
+      unsubOe();
+      unsubCb();
+      unsubDrivers();
+      unsubAdv();
+      unsubOp();
+      unsubVeh();
+      unsubW();
     };
   }, []);
 
@@ -261,9 +233,8 @@ export default function FinanceChiPage() {
     setPayrollPdfBusy(true);
     setPayrollPdfError(null);
     (async () => {
-      ensureDriverWalletStore();
       const walletKey = `emp:${selectedPayrollDriver.employeeCode}`;
-      const w = listDriverWallets().find((x) => x.key === walletKey);
+      const w = getWalletByKey(walletKey);
       const walletName = w?.walletName ?? `${selectedPayrollDriver.employeeCode}WD`;
       const balances = w?.balances ?? { VND: 0 };
 
@@ -1248,28 +1219,26 @@ export default function FinanceChiPage() {
             return setAddError("Khoản chi khác hiện chỉ hỗ trợ VND hoặc USD.");
           }
 
-          const oe = addOtherExpense({
+          void addOtherExpenseFs({
             content: addForm.content,
             amount,
             currency: cur as OtherExpenseCurrency,
           });
-          setOtherExpenses(listOtherExpenses());
 
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: cur,
             amount,
             method: r.sourceId === "CASH" ? "TM" : "CK",
-            content: `Chi khác • ${oe.content}`,
+            content: `Chi khác • ${addForm.content.trim()}`,
             referenceType: "OTHER_EXPENSE",
-            referenceId: oe.id,
+            referenceId: addForm.content.trim(),
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, cur, -amount);
+            void adjustDriverWalletBalanceFs(walletKey, cur, -amount);
           }
-          setCashbook(listCashbookEntries());
 
           setAddForm({ content: "" });
           setOpenAddOther(false);
@@ -1370,14 +1339,13 @@ export default function FinanceChiPage() {
           const amount = Math.round(Number(r.amount ?? 0) || 0);
           if (!amount || amount <= 0) return setAdvanceError("Số tiền không hợp lệ.");
 
-          const adv = addDriverAdvance({
+          void addDriverAdvanceFs({
             driverEmployeeCode: selectedPayrollDriver.employeeCode,
             driverName: selectedPayrollDriver.name,
             amountVnd: amount,
           });
-          setAdvances(listDriverAdvances());
 
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: "VND",
@@ -1385,13 +1353,12 @@ export default function FinanceChiPage() {
             method: r.sourceId === "CASH" ? "TM" : "CK",
             content: `Tạm ứng • ${selectedPayrollDriver.name} • ${selectedPayrollDriver.employeeCode}`,
             referenceType: "DRIVER_ADVANCE",
-            referenceId: adv.id,
+            referenceId: selectedPayrollDriver.employeeCode,
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, "VND", -amount);
+            void adjustDriverWalletBalanceFs(walletKey, "VND", -amount);
           }
-          setCashbook(listCashbookEntries());
           setAdvanceAmount("");
           setOpenAddAdvance(false);
         }}
@@ -1492,18 +1459,14 @@ export default function FinanceChiPage() {
           }
           if (opType !== "VETC" && !opForm.vehiclePlate) return setOpError("Vui lòng chọn xe.");
 
-          const now = new Date();
-          const op = addOperatingExpense({
+          void addOperatingExpenseFs({
             type: opType,
             vehiclePlate: opType === "VETC" ? undefined : opForm.vehiclePlate,
             amountVnd: amount,
             paymentMethod: r.sourceId.startsWith("WALLET:") ? "Ví tài xế" : r.sourceId === "CASH" ? "TM" : "CK",
-            createdBy: currentUser,
-            createdDate: now.toLocaleDateString("vi-VN"),
-            createdTime: now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
           });
 
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: "VND",
@@ -1511,18 +1474,18 @@ export default function FinanceChiPage() {
             method: r.sourceId === "CASH" ? "TM" : "CK",
             content: `Chi vận hành • ${opType}${opType === "VETC" ? "" : ` • ${opForm.vehiclePlate}`}`,
             referenceType: "OP_EXPENSE",
-            referenceId: op.id,
+            referenceId: opType,
           });
 
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, "VND", -amount);
+            void adjustDriverWalletBalanceFs(walletKey, "VND", -amount);
           }
 
           // Sync to vehicle status: paying "Thay Dầu" or "Bảo Dưỡng" implies done at current km.
           if (opType === "Thay Dầu" || opType === "Bảo Dưỡng") {
             const plate = opForm.vehiclePlate;
-            const current = listVehicles().find((x) => x.plate.toLowerCase() === plate.toLowerCase());
+            const current = vehicles.find((x) => x.plate.toLowerCase() === plate.toLowerCase());
             if (current) {
               const next: Vehicle = {
                 ...current,
@@ -1530,13 +1493,10 @@ export default function FinanceChiPage() {
                 lastServiceKm: opType === "Bảo Dưỡng" ? current.km : current.lastServiceKm,
                 updatedAt: Date.now(),
               };
-              updateVehicle(current.plate, next);
+              void upsertVehicleFs(next);
             }
           }
 
-          setCashbook(listCashbookEntries());
-          setOperatingExpenses(listOperatingExpenses());
-          setVehicles(listVehicles());
           setOpenOp(false);
         }}
       />
@@ -1576,7 +1536,7 @@ export default function FinanceChiPage() {
           if (!payBookingCode) return;
           const b = reservations.find((x) => x.code === payBookingCode);
           const supplierName = b?.assignedSupplierId ? supplierById[b.assignedSupplierId]?.name : undefined;
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: r.currency as any,
@@ -1588,9 +1548,8 @@ export default function FinanceChiPage() {
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, r.currency, -r.amount);
+            void adjustDriverWalletBalanceFs(walletKey, r.currency, -r.amount);
           }
-          setCashbook(listCashbookEntries());
         }}
       />
 
@@ -1644,7 +1603,7 @@ export default function FinanceChiPage() {
           const net = displayCur === "VND" ? netVnd : netUsd;
           const direction = net < 0 ? "IN" : "OUT";
 
-          addCashbookEntry({
+          void addCashbookEntryFs({
             direction,
             sourceId: r.sourceId,
             currency: r.currency as any,
@@ -1656,9 +1615,8 @@ export default function FinanceChiPage() {
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            adjustDriverWalletBalance(walletKey, r.currency, direction === "OUT" ? -r.amount : r.amount);
+            void adjustDriverWalletBalanceFs(walletKey, r.currency, direction === "OUT" ? -r.amount : r.amount);
           }
-          setCashbook(listCashbookEntries());
         }}
       />
 

@@ -4,7 +4,8 @@ import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { ensureTripsStore, listTrips, deleteTrip, type Trip, type TripStatus } from "@/lib/calendar/tripsStore";
+import { type Trip, type TripStatus } from "@/lib/calendar/tripsStore";
+import { deleteCalendarTripFs, subscribeCalendarTrips } from "@/lib/calendar/tripsFirestore";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
 import type { Reservation } from "@/lib/reservations/reservationStore";
@@ -70,11 +71,9 @@ export default function CalendarPage() {
   }, [selected]);
 
   React.useEffect(() => {
-    ensureTripsStore();
-    const demo = listTrips();
-
     let activeRows: Reservation[] = [];
     let cancelledSet = new Set<string>();
+    let manualTrips: Trip[] = [];
 
     const recompute = () => {
       setReservationCodes(new Set(activeRows.map((x) => x.code)));
@@ -98,8 +97,8 @@ export default function CalendarPage() {
         }))
         .filter((t) => Boolean(t.date));
 
-      const nextDemo = listTrips().filter((t) => !reservationTrips.some((x) => x.id === t.id));
-      setTrips([...reservationTrips, ...nextDemo]);
+      const nextManual = manualTrips.filter((t) => !reservationTrips.some((x) => x.id === t.id));
+      setTrips([...reservationTrips, ...nextManual]);
       setCancelledCodes(new Set(cancelledSet));
     };
 
@@ -111,21 +110,15 @@ export default function CalendarPage() {
       cancelledSet = new Set(rows.map((x: any) => x.code));
       recompute();
     });
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.calendar.trips")) recompute();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => {
+    const unsubT = subscribeCalendarTrips((rows) => {
+      manualTrips = rows;
       recompute();
-    };
-    window.addEventListener("focus", onFocus);
+    });
+
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
       unsubA();
       unsubC();
+      unsubT();
     };
   }, []);
 
@@ -301,8 +294,7 @@ export default function CalendarPage() {
                 if (reservationCodes.has(cancelTrip.id)) {
                   void cancelReservationFirestore(cancelTrip.id, { cancelledFrom: "calendar" });
                 }
-                deleteTrip(cancelTrip.id);
-                setTrips((all) => all.filter((x) => x.id !== cancelTrip.id));
+                void deleteCalendarTripFs(cancelTrip.id);
                 setOpenCancel(false);
               }}
             >

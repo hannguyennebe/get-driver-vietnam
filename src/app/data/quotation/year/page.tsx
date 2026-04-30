@@ -3,13 +3,14 @@
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import {
-  ensureQuotationStore,
   generateQuotationId,
-  listQuotations,
-  upsertQuotation,
+  type Quotation,
 } from "@/lib/data/quotationStore";
-import { ensureItineraryStore, listItineraries, type Itinerary } from "@/lib/data/itineraryStore";
-import { ensureVehicleTypeStore, listVehicleTypes, type VehicleType } from "@/lib/data/vehicleTypeStore";
+import type { Itinerary } from "@/lib/data/itineraryStore";
+import type { VehicleType } from "@/lib/data/vehicleTypeStore";
+import { subscribeItineraries } from "@/lib/data/itineraryFirestore";
+import { subscribeVehicleTypes } from "@/lib/data/vehicleTypeFirestore";
+import { subscribeQuotations, upsertQuotationFs } from "@/lib/data/quotationsFirestore";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function YearQuotationInner() {
@@ -23,6 +24,7 @@ function YearQuotationInner() {
 
   const [itineraries, setItineraries] = React.useState<Itinerary[]>([]);
   const [vehicleTypes, setVehicleTypes] = React.useState<VehicleType[]>([]);
+  const [allQuotes, setAllQuotes] = React.useState<Quotation[]>([]);
 
   const nowY = new Date().getFullYear();
   const initY = params.get("y")?.replace(/[^\d]/g, "").slice(0, 4) || String(nowY);
@@ -45,27 +47,13 @@ function YearQuotationInner() {
   );
 
   React.useEffect(() => {
-    ensureQuotationStore();
-    ensureItineraryStore();
-    ensureVehicleTypeStore();
-
-    const load = () => {
-      setItineraries(listItineraries());
-      setVehicleTypes(listVehicleTypes());
-    };
-    load();
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.itineraries")) load();
-      if (e.key.includes("getdriver.data.vehicle-types")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
+    const unsubIt = subscribeItineraries(setItineraries);
+    const unsubVt = subscribeVehicleTypes(setVehicleTypes);
+    const unsubQ = subscribeQuotations(setAllQuotes);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      unsubIt();
+      unsubVt();
+      unsubQ();
     };
   }, []);
 
@@ -212,8 +200,8 @@ function YearQuotationInner() {
 
                     setSaving(true);
                     try {
-                      const id = generateQuotationId(listQuotations().map((x) => x.id));
-                      upsertQuotation({
+                      const id = generateQuotationId(allQuotes.map((x) => x.id));
+                      void upsertQuotationFs({
                         id,
                         groupId,
                         groupTitle,

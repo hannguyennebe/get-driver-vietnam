@@ -13,17 +13,21 @@ import {
 } from "@/components/ui/dialog";
 import {
   describeTemplatePaymentRule,
-  finalizeTemplateEarly,
-  listTemplates,
   type Period,
   type RecurringExpenseTemplate,
-  upsertTemplate,
 } from "@/lib/finance/apStore";
-import { listExpenses } from "@/lib/finance/apStore";
+import type { ExpenseInstance } from "@/lib/finance/apStore";
+import {
+  finalizeApTemplateEarlyFs,
+  subscribeApExpenses,
+  subscribeApTemplates,
+  upsertApTemplateFs,
+} from "@/lib/finance/apFirestore";
+import { useDocLock } from "@/lib/firestore/useDocLock";
 
 export default function OfficeExpenseCatalogPage() {
   const [templates, setTemplates] = React.useState<RecurringExpenseTemplate[]>([]);
-  const [expenses, setExpenses] = React.useState(() => [] as ReturnType<typeof listExpenses>);
+  const [expenses, setExpenses] = React.useState<ExpenseInstance[]>([]);
   const [openAdd, setOpenAdd] = React.useState(false);
   const [dialogMode, setDialogMode] = React.useState<"add" | "edit">("add");
   const [editingTplId, setEditingTplId] = React.useState<string | null>(null);
@@ -42,22 +46,18 @@ export default function OfficeExpenseCatalogPage() {
     accrualMonthOffset: "0" as "0" | "-1",
   });
 
+  const lock = useDocLock({
+    resource: "finance",
+    resourceId: openAdd && dialogMode === "edit" ? `ap_template:${editingTplId ?? ""}` : null,
+    enabled: true,
+  });
+
   React.useEffect(() => {
-    const load = () => {
-      setTemplates(listTemplates());
-      setExpenses(listExpenses());
-    };
-    load();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.finance.ap.")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
+    const unsubT = subscribeApTemplates(setTemplates);
+    const unsubE = subscribeApExpenses(setExpenses);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      unsubT();
+      unsubE();
     };
   }, []);
 
@@ -227,6 +227,21 @@ export default function OfficeExpenseCatalogPage() {
           </DialogHeader>
 
           <div className="space-y-3">
+            {dialogMode === "edit" && editingTplId ? (
+              !lock.isReady ? (
+                <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300">
+                  Đang kiểm tra lock…
+                </div>
+              ) : lock.canEdit ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+                  Bạn đang sửa danh mục này.
+                </div>
+              ) : (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                  Danh mục đang được sửa bởi <b>{lock.lockedByName ?? "—"}</b>.
+                </div>
+              )
+            ) : null}
             <Field label="Loại chi phí">
               <Input
                 value={form.name}
@@ -336,8 +351,12 @@ export default function OfficeExpenseCatalogPage() {
               </Button>
               <Button
                 className="h-9 text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912]"
+                disabled={Boolean(dialogMode === "edit" && editingTplId && lock.isReady && !lock.canEdit)}
                 onClick={() => {
                   setError(null);
+                  if (dialogMode === "edit" && editingTplId && lock.isReady && !lock.canEdit) {
+                    return setError(`Danh mục đang được sửa bởi ${lock.lockedByName ?? "—"}.`);
+                  }
                   if (!form.name.trim()) {
                     return setError("Vui lòng nhập tên loại chi phí.");
                   }
@@ -396,8 +415,7 @@ export default function OfficeExpenseCatalogPage() {
                     createdAt: existingEdit?.createdAt ?? now,
                     updatedAt: now,
                   };
-                  upsertTemplate(tpl);
-                  setTemplates(listTemplates());
+                  void upsertApTemplateFs(tpl);
                   setOpenAdd(false);
                 }}
               >
@@ -436,8 +454,12 @@ export default function OfficeExpenseCatalogPage() {
                 if (!finalTplId) return;
                 const now = new Date();
                 const effectiveTo: Period = { month: now.getMonth() + 1, year: now.getFullYear() };
-                finalizeTemplateEarly({ templateId: finalTplId, effectiveTo });
-                setTemplates(listTemplates());
+                void finalizeApTemplateEarlyFs({
+                  templateId: finalTplId,
+                  effectiveTo,
+                  templates,
+                  existingExpenses: expenses,
+                });
                 setOpenFinal(false);
               }}
             >

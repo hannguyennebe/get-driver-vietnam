@@ -5,29 +5,25 @@ import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Home, Pencil, Phone, Share2, Trash2, User, Wallet } from "lucide-react";
-import { addCashbookEntry, listCashbookEntries, type CashbookEntry } from "@/lib/finance/cashbookStore";
+import type { CashbookEntry } from "@/lib/finance/cashbookStore";
+import { addCashbookEntryFs, subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
 import { getPaymentInfo } from "@/lib/admin/paymentStore";
 import {
-  addDriver,
-  deleteDriver,
-  ensureDriverStore,
   generateEmployeeCode,
-  listDrivers,
-  updateDriver,
   type Driver,
   type DriverType,
 } from "@/lib/fleet/driverStore";
 import {
-  ensureDriverWalletStore,
-  ensureWalletForExternalDispatch,
-  ensureWalletForRosterDriver,
-  ensureWalletsForAllRosterDrivers,
-  getWalletByDispatchPhonePlate,
-  getWalletByEmployeeCode,
   odCodeFromExternal,
-  adjustDriverWalletBalance,
   type DriverWallet,
 } from "@/lib/fleet/driverWalletStore";
+import { deleteDriverFs, subscribeDrivers, upsertDriverFs } from "@/lib/fleet/driversFirestore";
+import {
+  adjustDriverWalletBalanceFs,
+  ensureWalletForExternalDispatchFs,
+  ensureWalletForRosterDriverFs,
+  subscribeDriverWallets,
+} from "@/lib/fleet/driverWalletsFirestore";
 import type { Reservation } from "@/lib/reservations/reservationStore";
 import {
   getReservationByCode,
@@ -41,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRouter } from "next/navigation";
+import { useDocLock } from "@/lib/firestore/useDocLock";
 
 type ExternalDispatchRow = {
   code: string;
@@ -74,6 +71,7 @@ export default function DriversPage() {
   const [q, setQ] = React.useState("");
   const [tab, setTab] = React.useState<DriverType>("internal");
   const [drivers, setDrivers] = React.useState<Driver[]>([]);
+  const [wallets, setWallets] = React.useState<DriverWallet[]>([]);
   const [externalRows, setExternalRows] = React.useState<ExternalDispatchRow[]>([]);
   const [openExtBooking, setOpenExtBooking] = React.useState(false);
   const [extBookingCode, setExtBookingCode] = React.useState<string | null>(null);
@@ -81,7 +79,6 @@ export default function DriversPage() {
   const [openEdit, setOpenEdit] = React.useState(false);
   const [editKey, setEditKey] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [walletRev, setWalletRev] = React.useState(0);
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
   const [form, setForm] = React.useState({
     employeeCode: "",
@@ -90,32 +87,35 @@ export default function DriversPage() {
     licenseType: "B2",
   });
 
+  const lock = useDocLock({ resource: "drivers", resourceId: openEdit ? editKey : null, enabled: true });
+
   React.useEffect(() => {
-    ensureDriverStore();
-    ensureDriverWalletStore();
-    ensureWalletsForAllRosterDrivers();
-    setDrivers(listDrivers());
-
+    const unsubDrivers = subscribeDrivers(setDrivers);
+    const unsubWallets = subscribeDriverWallets(setWallets);
     const unsub = subscribeActiveReservations(setReservations);
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.fleet.driverWallets")) {
-        ensureWalletsForAllRosterDrivers();
-        setWalletRev((x) => x + 1);
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => {
-      ensureWalletsForAllRosterDrivers();
-    };
-    window.addEventListener("focus", onFocus);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
       unsub();
+      unsubDrivers();
+      unsubWallets();
     };
   }, []);
+
+  React.useEffect(() => {
+    // Ensure every roster driver has a wallet doc.
+    for (const d of drivers) {
+      void ensureWalletForRosterDriverFs(d.employeeCode, d.name);
+    }
+  }, [drivers]);
+
+  function getWalletByEmployeeCodeLocal(employeeCode: string) {
+    return wallets.find((w) => w.employeeCode === employeeCode);
+  }
+
+  function getWalletByDispatchPhonePlateLocal(phone: string, plate: string) {
+    const p = String(phone || "").replace(/\D/g, "");
+    const pl = String(plate || "").replace(/\s+/g, "").replace(/\./g, "").toUpperCase();
+    return wallets.find((w) => w.source === "dispatch" && (w.phone || "").replace(/\D/g, "") === p && (w.plate || "").replace(/\s+/g, "").replace(/\./g, "").toUpperCase() === pl);
+  }
 
   React.useEffect(() => {
     const rows = reservations
@@ -136,7 +136,7 @@ export default function DriversPage() {
       if (x.driverName === "—") continue;
       if (x.driverPhone === "—") continue;
       if (x.plate === "—") continue;
-      ensureWalletForExternalDispatch(x.driverName, x.driverPhone, x.plate);
+      void ensureWalletForExternalDispatchFs(x.driverName, x.driverPhone, x.plate);
     }
   }, [reservations]);
 
@@ -194,11 +194,11 @@ export default function DriversPage() {
     }
     const out: ExternalDriverCardRow[] = Array.from(byKey.values()).map((x) => ({
       ...x,
-      wallet: getWalletByDispatchPhonePlate(x.driverPhone, x.plate),
+      wallet: getWalletByDispatchPhonePlateLocal(x.driverPhone, x.plate),
     }));
     out.sort((a, b) => a.driverName.localeCompare(b.driverName, "vi"));
     return out;
-  }, [filteredExternal]);
+  }, [filteredExternal, wallets]);
 
   const stats = React.useMemo(() => {
     const byTab = drivers.filter((d) => d.type === tab);
@@ -235,7 +235,7 @@ export default function DriversPage() {
                 onClick={() => {
                   setError(null);
                   const nextCode = generateEmployeeCode(
-                    listDrivers().map((d) => d.employeeCode),
+                    drivers.map((d) => d.employeeCode),
                   );
                   setForm({
                     employeeCode: nextCode,
@@ -307,7 +307,7 @@ export default function DriversPage() {
               <>
                 {externalDrivers.map((x) => (
                   <ExternalDriverCard
-                    key={`${x.odCode}-${walletRev}`}
+                    key={x.odCode}
                     x={x}
                     onOpenBooking={(code) => {
                       setExtBookingCode(code);
@@ -327,11 +327,8 @@ export default function DriversPage() {
                   <DriverCard
                     key={d.employeeCode}
                     d={d}
-                    wallet={getWalletByEmployeeCode(d.employeeCode)}
-                    onChangeStatus={(status) => {
-                      updateDriver(d.employeeCode, { status });
-                      setDrivers(listDrivers());
-                    }}
+                    wallet={getWalletByEmployeeCodeLocal(d.employeeCode)}
+                    onChangeStatus={(status) => void upsertDriverFs({ ...d, status, updatedAt: Date.now() })}
                     onEdit={() => {
                       setError(null);
                       setEditKey(d.employeeCode);
@@ -343,10 +340,7 @@ export default function DriversPage() {
                       });
                       setOpenEdit(true);
                     }}
-                    onDelete={() => {
-                      deleteDriver(d.employeeCode);
-                      setDrivers(listDrivers());
-                    }}
+                    onDelete={() => void deleteDriverFs(d.employeeCode)}
                   />
                 ))}
                 {filtered.length === 0 ? (
@@ -436,9 +430,10 @@ export default function DriversPage() {
                     updatedAt: now,
                   };
                   try {
-                    addDriver(next);
-                    ensureWalletForRosterDriver(next.employeeCode, next.name);
-                    setDrivers(listDrivers());
+                    const dupCode = drivers.some((d) => d.employeeCode === next.employeeCode);
+                    if (dupCode) throw new Error("duplicate_employee_code");
+                    void upsertDriverFs(next);
+                    void ensureWalletForRosterDriverFs(next.employeeCode, next.name);
                     setOpenAdd(false);
                   } catch (e) {
                     setError("Số điện thoại hoặc mã nhân viên đã tồn tại.");
@@ -465,6 +460,21 @@ export default function DriversPage() {
             </DialogHeader>
 
             <div className="space-y-3">
+              {editKey ? (
+                !lock.isReady ? (
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300">
+                    Đang kiểm tra lock…
+                  </div>
+                ) : lock.canEdit ? (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+                    Bạn đang sửa dữ liệu này.
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                    Dữ liệu đang được sửa bởi <b>{lock.lockedByName ?? "—"}</b>.
+                  </div>
+                )
+              ) : null}
               <div className="space-y-1">
                 <label className="text-sm font-medium">Mã nhân viên</label>
                 <Input value={form.employeeCode} readOnly />
@@ -510,20 +520,25 @@ export default function DriversPage() {
 
               <Button
                 className="w-full"
+                disabled={Boolean(editKey && lock.isReady && !lock.canEdit)}
                 onClick={() => {
                   setError(null);
                   if (!editKey) return;
+                  if (lock.isReady && !lock.canEdit) return setError(`Dữ liệu đang được sửa bởi ${lock.lockedByName ?? "—"}.`);
                   const name = form.name.trim();
                   const phone = form.phone.trim();
                   if (!name) return setError("Vui lòng nhập Tên Nhân Viên.");
                   if (!phone) return setError("Vui lòng nhập Số Điện Thoại.");
 
-                  updateDriver(editKey, {
+                  const current = drivers.find((d) => d.employeeCode === editKey);
+                  if (!current) return setError("Không tìm thấy tài xế.");
+                  void upsertDriverFs({
+                    ...current,
                     name,
                     phone,
                     licenseType: form.licenseType,
+                    updatedAt: Date.now(),
                   });
-                  setDrivers(listDrivers());
                   setOpenEdit(false);
                 }}
               >
@@ -866,15 +881,19 @@ function WalletDetailsDialog({ driverName, wallet }: { driverName: string; walle
   };
 
   const paymentInfo = React.useMemo(() => (typeof window === "undefined" ? null : getPaymentInfo()), []);
+  const [cashbookEntries, setCashbookEntries] = React.useState<CashbookEntry[]>([]);
+  React.useEffect(() => {
+    const unsub = subscribeCashbookEntries(setCashbookEntries);
+    return () => unsub();
+  }, []);
   const walletHistory = React.useMemo(() => {
-    if (typeof window === "undefined") return [] as CashbookEntry[];
     const key = wallet?.key ? `WALLET:${wallet.key}` : "";
-    if (!key) return [];
-    return listCashbookEntries()
+    if (!key) return [] as CashbookEntry[];
+    return cashbookEntries
       .filter((e) => e.sourceId === key)
       .slice()
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, [wallet?.key]);
+  }, [wallet?.key, cashbookEntries]);
 
   return (
     <DialogContent className="max-w-xl">
@@ -1004,7 +1023,7 @@ function WalletDetailsDialog({ driverName, wallet }: { driverName: string; walle
                   }
 
                   // OUT from wallet
-                  addCashbookEntry({
+                  void addCashbookEntryFs({
                     direction: "OUT",
                     sourceId: `WALLET:${wallet.key}`,
                     currency: cur,
@@ -1015,7 +1034,7 @@ function WalletDetailsDialog({ driverName, wallet }: { driverName: string; walle
                     referenceId: `${wallet.key}:${Date.now()}`,
                   });
                   // IN to destination
-                  addCashbookEntry({
+                  void addCashbookEntryFs({
                     direction: "IN",
                     sourceId: transferDest,
                     currency: cur,
@@ -1029,7 +1048,7 @@ function WalletDetailsDialog({ driverName, wallet }: { driverName: string; walle
                   // NOTE: balances in wallet store is the source-of-truth for wallet UI
                   // and cashbook is used for overall cash flow.
                   // This keeps both consistent with other payment flows.
-                  adjustDriverWalletBalance(wallet.key, cur, -amt);
+                  void adjustDriverWalletBalanceFs(wallet.key, cur, -amt);
 
                   setOpenTransfer(false);
                 }}

@@ -3,21 +3,21 @@
 import * as React from "react";
 import { AppShell } from "@/components/app/AppShell";
 import {
-  ensureQuotationStore,
-  deleteQuotation,
   generateQuotationId,
   groupQuotations,
-  listQuotations,
-  upsertQuotation,
 } from "@/lib/data/quotationStore";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  ensurePartnersStore,
-  listTravelAgents,
-  type TravelAgent,
-} from "@/lib/data/partnersStore";
-import { ensureItineraryStore, listItineraries, type Itinerary } from "@/lib/data/itineraryStore";
-import { ensureVehicleTypeStore, listVehicleTypes, type VehicleType } from "@/lib/data/vehicleTypeStore";
+  deleteQuotationFs,
+  subscribeQuotations,
+  upsertQuotationFs,
+} from "@/lib/data/quotationsFirestore";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { TravelAgent } from "@/lib/data/partnersStore";
+import type { Itinerary } from "@/lib/data/itineraryStore";
+import type { VehicleType } from "@/lib/data/vehicleTypeStore";
+import { subscribeTravelAgents } from "@/lib/data/partnersFirestore";
+import { subscribeItineraries } from "@/lib/data/itineraryFirestore";
+import { subscribeVehicleTypes } from "@/lib/data/vehicleTypeFirestore";
 import { Trash2 } from "lucide-react";
 
 export default function DataQuotationPage() {
@@ -49,56 +49,26 @@ export default function DataQuotationPage() {
   const [confirmDelete, setConfirmDelete] = React.useState<{ id: string; title: string } | null>(null);
 
   React.useEffect(() => {
-    ensureQuotationStore();
-    const load = () => setAll(listQuotations());
-    load();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.quotations")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
-
-  const refresh = React.useCallback(() => setAll(listQuotations()), []);
-
-  React.useEffect(() => {
-    ensureItineraryStore();
-    const load = () => setItineraries(listItineraries());
-    load();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.itineraries")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      // no-op
     };
   }, []);
 
   React.useEffect(() => {
-    ensureVehicleTypeStore();
-    const load = () => setVehicleTypes(listVehicleTypes());
-    load();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.vehicle-types")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-    };
+    const unsub = subscribeQuotations(setAll);
+    return () => unsub();
+  }, []);
+
+  const refresh = React.useCallback(() => {}, []);
+
+  React.useEffect(() => {
+    const unsub = subscribeItineraries(setItineraries);
+    return () => unsub();
+  }, []);
+
+  React.useEffect(() => {
+    const unsub = subscribeVehicleTypes(setVehicleTypes);
+    return () => unsub();
   }, []);
 
   const sortedVehicleTypes = React.useMemo(() => {
@@ -139,20 +109,8 @@ export default function DataQuotationPage() {
   }, [openCreate, sortedVehicleTypes]);
 
   React.useEffect(() => {
-    ensurePartnersStore();
-    const load = () => setTravelAgentsState(listTravelAgents());
-    load();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.partners")) load();
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
-    };
+    const unsub = subscribeTravelAgents(setTravelAgentsState);
+    return () => unsub();
   }, []);
 
   const commonRows = React.useMemo(() => {
@@ -545,8 +503,8 @@ export default function DataQuotationPage() {
                       return `${itn} | ${parts.join(" | ")}`;
                     })
                     .filter(Boolean);
-                  const id = generateQuotationId(listQuotations().map((x) => x.id));
-                  upsertQuotation({
+                  const id = generateQuotationId(all.map((x: any) => String(x?.id ?? "")));
+                  void upsertQuotationFs({
                     id,
                     groupId,
                     groupTitle,
@@ -718,8 +676,7 @@ export default function DataQuotationPage() {
               className="h-9 rounded-xl px-4 text-sm font-semibold text-white shadow-sm bg-gradient-to-b from-[#1AAAE1] to-[#0B79B8] hover:from-[#22B4EC] hover:to-[#0A6EA7]"
               onClick={() => {
                 if (confirmDelete?.id) {
-                  deleteQuotation(confirmDelete.id);
-                  refresh();
+                  void deleteQuotationFs(confirmDelete.id);
                 }
                 setConfirmDeleteOpen(false);
               }}

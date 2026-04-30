@@ -5,17 +5,16 @@ import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getDemoSession } from "@/lib/auth/demo";
-import { ensurePartnersStore, getPartners } from "@/lib/data/partnersStore";
+import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
+import { subscribeTravelAgents } from "@/lib/data/partnersFirestore";
 import {
-  ensureItineraryStore,
-  listItineraries,
   type Itinerary,
 } from "@/lib/data/itineraryStore";
+import { subscribeItineraries } from "@/lib/data/itineraryFirestore";
 import {
-  ensureVehicleTypeStore,
-  listVehicleTypes,
   type VehicleType,
 } from "@/lib/data/vehicleTypeStore";
+import { subscribeVehicleTypes } from "@/lib/data/vehicleTypeFirestore";
 import {
   generateBookingId,
   type Currency,
@@ -30,6 +29,7 @@ import {
   getReservationByCode,
   patchReservation,
 } from "@/lib/reservations/reservationsFirestore";
+import { acquireLock, releaseLock, type AcquireLockResult } from "@/lib/firestore/locks";
 
 export default function ReservationNewPage() {
   return (
@@ -58,6 +58,7 @@ function ReservationNewInner() {
   const [sales, setSales] = React.useState("—");
   const [createdAt, setCreatedAt] = React.useState<Date | null>(null);
   const [originalCreatedAt, setOriginalCreatedAt] = React.useState<number | null>(null);
+  const [lockState, setLockState] = React.useState<AcquireLockResult | null>(null);
 
   const [travelAgents, setTravelAgents] = React.useState<
     Array<{ id: string; name: string; paymentType?: "Phải Trả" | "Công Nợ"; taxIncluded?: boolean }>
@@ -96,33 +97,32 @@ function ReservationNewInner() {
     const s = typeof window !== "undefined" ? getDemoSession() : null;
     setSales(s?.username ?? "—");
 
-    ensurePartnersStore();
-    const p = getPartners();
-    setTravelAgents(
-      p.travelAgents.map((x) => ({
-        id: x.id,
-        name: x.name,
-        paymentType: x.paymentType,
-        taxIncluded: x.taxIncluded,
-      })),
-    );
-
-    ensureItineraryStore();
-    setItineraries(listItineraries());
-
-    ensureVehicleTypeStore();
-    const vt = listVehicleTypes();
-    setVehicleTypes(vt);
-    setForm((s) => ({ ...s, vehicleType: s.vehicleType || vt[0]?.name || "Xe 4 chỗ" }));
-
     const code = searchParams.get("code");
     let cancelled = false;
+    let vehicleTypesLocal: VehicleType[] = [];
+    const unsubTa = subscribeTravelAgents((tas) =>
+      setTravelAgents(
+        tas.map((x) => ({
+          id: x.id,
+          name: x.name,
+          paymentType: x.paymentType,
+          taxIncluded: x.taxIncluded,
+        })),
+      ),
+    );
+    const unsubIt = subscribeItineraries(setItineraries);
+    const unsubVt = subscribeVehicleTypes((vt) => {
+      vehicleTypesLocal = vt;
+      setVehicleTypes(vt);
+      setForm((s) => ({ ...s, vehicleType: s.vehicleType || vt[0]?.name || "Xe 4 chỗ" }));
+    });
     void (async () => {
       if (code) {
         const existing = await getReservationByCode(code);
         if (cancelled) return;
         if (existing) {
           setEditingCode(existing.code);
+          setLockState(null);
           setOriginalCreatedAt(existing.createdAt ?? null);
           setCreatedAt(new Date(existing.createdAt ?? Date.now()));
           setForm((s) => ({
@@ -134,7 +134,7 @@ function ReservationNewInner() {
             customerName: existing.customerName ?? "",
             customerCount: String(existing.customerCount ?? 1),
             itinerary: existing.itinerary ?? "",
-            vehicleType: existing.vehicleType ?? (vt[0]?.name || ""),
+            vehicleType: existing.vehicleType ?? (vehicleTypesLocal[0]?.name || ""),
             unitQty: String(existing.unitQty ?? 1),
             unitPrice: String(existing.unitPrice ?? 0),
             taxIncluded: existing.taxIncluded ? ("Có" as const) : ("Không" as const),
@@ -154,68 +154,49 @@ function ReservationNewInner() {
         const id = generateBookingId([]);
         setForm((s) => ({ ...s, bookingId: id }));
         setEditingCode(null);
+        setLockState(null);
         setOriginalCreatedAt(null);
       }
     })();
 
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key.includes("getdriver.data.itineraries")) {
-        setItineraries(listItineraries());
-      }
-      if (e.key.includes("getdriver.data.vehicle-types")) {
-        const next = listVehicleTypes();
-        setVehicleTypes(next);
-        setForm((s) => ({
-          ...s,
-          vehicleType:
-            s.vehicleType && next.some((x) => x.name === s.vehicleType)
-              ? s.vehicleType
-              : next[0]?.name || "",
-        }));
-      }
-      if (e.key.includes("getdriver.data.partners")) {
-        const pp = getPartners();
-        setTravelAgents(
-          pp.travelAgents.map((x) => ({
-            id: x.id,
-            name: x.name,
-            paymentType: x.paymentType,
-            taxIncluded: x.taxIncluded,
-          })),
-        );
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    const onFocus = () => {
-      setItineraries(listItineraries());
-      const next = listVehicleTypes();
-      setVehicleTypes(next);
-      setForm((s) => ({
-        ...s,
-        vehicleType:
-          s.vehicleType && next.some((x) => x.name === s.vehicleType)
-            ? s.vehicleType
-            : next[0]?.name || "",
-      }));
-      const pp = getPartners();
-      setTravelAgents(
-        pp.travelAgents.map((x) => ({
-          id: x.id,
-          name: x.name,
-          paymentType: x.paymentType,
-          taxIncluded: x.taxIncluded,
-        })),
-      );
-    };
-    window.addEventListener("focus", onFocus);
-
     return () => {
       cancelled = true;
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("focus", onFocus);
+      const me = getCurrentUserIdentity();
+      if (me && editingCode && lockState?.ok) {
+        void releaseLock({ resource: "reservations", resourceId: editingCode, ownerUid: me.uid });
+      }
+      unsubTa();
+      unsubIt();
+      unsubVt();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    if (!editingCode) return;
+    let cancelled = false;
+    void (async () => {
+      const me = getCurrentUserIdentity();
+      if (!me) return;
+      const res = await acquireLock({
+        resource: "reservations",
+        resourceId: editingCode,
+        ownerUid: me.uid,
+        ownerName: me.name,
+        leaseMs: 2 * 60 * 1000,
+      });
+      if (cancelled) return;
+      setLockState(res);
+    })();
+    return () => {
+      cancelled = true;
+      const me = getCurrentUserIdentity();
+      if (me && lockState?.ok) {
+        void releaseLock({ resource: "reservations", resourceId: editingCode, ownerUid: me.uid });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingCode]);
 
   const qty = Number(form.unitQty) || 0;
   const unitPrice = Number(form.unitPrice) || 0;
@@ -233,6 +214,23 @@ function ReservationNewInner() {
           </p>
 
           <div className="mt-5 max-w-4xl rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            {editingCode ? (
+              <div className="mb-4">
+                {!lockState ? (
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300">
+                    Đang kiểm tra lock…
+                  </div>
+                ) : lockState.ok ? (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+                    Bạn đang sửa booking này.
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                    Booking đang được sửa bởi <b>{lockState.lock.ownerName}</b>.
+                  </div>
+                )}
+              </div>
+            ) : null}
             <div className="grid gap-4 md:grid-cols-3">
               <Field label="Booking ID">
                 <Input value={form.bookingId} readOnly />
@@ -522,8 +520,13 @@ function ReservationNewInner() {
               </Button>
               <Button
                 className="h-9 bg-[#2E7AB0] text-white hover:bg-[#276a98]"
+                disabled={Boolean(editingCode && lockState && !lockState.ok)}
                 onClick={async () => {
                   setError(null);
+                  if (editingCode && lockState && !lockState.ok) {
+                    setError(`Booking đang được sửa bởi ${lockState.lock.ownerName}.`);
+                    return;
+                  }
                   if (!form.tripDateISO.trim()) return setError("Vui lòng chọn Ngày đi.");
                   if (!form.pickupTime.trim()) return setError("Vui lòng nhập Giờ đón.");
                   if (!form.customerName.trim()) return setError("Vui lòng nhập Tên khách.");
