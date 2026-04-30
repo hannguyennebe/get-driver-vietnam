@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearDemoSession, getDemoSession } from "@/lib/auth/demo";
 import { Button } from "@/components/ui/button";
-import { getFirebaseProjectHint } from "@/lib/firebase/client";
+import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
 import {
   CalendarDays,
   ChevronDown,
@@ -34,7 +34,6 @@ export function AppShell({
   const [openFinance, setOpenFinance] = React.useState(false);
   const [logoDataUrl, setLogoDataUrl] = React.useState<string>("");
   const logoInputRef = React.useRef<HTMLInputElement | null>(null);
-  const [firebaseHint, setFirebaseHint] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const session = getDemoSession();
@@ -42,20 +41,11 @@ export function AppShell({
       router.replace("/login");
       return;
     }
-    setUsername(session.username);
+    const ident = getCurrentUserIdentity();
+    setUsername(ident?.name ?? session.username);
     setRole(session.role);
     setPermissions(session.permissions ?? { view: [], edit: [] });
   }, [router]);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    // Delay one tick to allow Firebase app init to happen elsewhere first.
-    const id = window.setTimeout(() => {
-      const hint = getFirebaseProjectHint();
-      setFirebaseHint(hint?.projectId ?? null);
-    }, 0);
-    return () => window.clearTimeout(id);
-  }, []);
 
   function canView(id: string) {
     if (role === "Admin") return true;
@@ -320,11 +310,6 @@ export function AppShell({
             <div className="pr-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
               {username}
             </div>
-            {firebaseHint ? (
-              <div className="pr-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                Firebase: <span className="font-mono">{firebaseHint}</span>
-              </div>
-            ) : null}
           </div>
         </div>
 
