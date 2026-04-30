@@ -202,7 +202,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-full flex flex-1 items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-black">
+    <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto bg-zinc-50 px-4 py-10 dark:bg-black">
       <div className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <div className="mb-6">
           <h1 className="text-xl font-semibold">Đăng nhập</h1>

@@ -75,7 +75,7 @@ function FinanceThanhToanInner() {
 
   return (
     <AppShell>
-      <div className="flex-1 px-6 pb-10">
+      <div className="px-6 pb-10">
         <div className="pt-6">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -301,7 +301,7 @@ function methodFromSourceId(sourceId: string): PaymentMethod {
 function Fallback() {
   return (
     <AppShell>
-      <div className="flex-1 px-6 pb-10">
+      <div className="px-6 pb-10">
         <div className="pt-6">
           <div className="rounded-xl border border-zinc-200 bg-white p-5 text-sm text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
             Đang tải...

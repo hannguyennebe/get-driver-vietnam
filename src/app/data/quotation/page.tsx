@@ -263,7 +263,7 @@ export default function DataQuotationPage() {
 
   return (
     <AppShell>
-      <div className="flex-1 px-6 pb-10">
+      <div className="px-6 pb-10">
         <div className="pt-6">
           <div className="flex items-start justify-between gap-4">
             <div>

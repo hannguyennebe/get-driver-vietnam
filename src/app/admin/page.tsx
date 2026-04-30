@@ -293,7 +293,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 px-6 pb-10">
+    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-10">
       <div className="pt-6">
         <div className="flex items-start justify-between gap-4">
           <div>

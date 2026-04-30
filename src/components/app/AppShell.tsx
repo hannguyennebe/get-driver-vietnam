@@ -82,8 +82,8 @@ export function AppShell({
   if (!username) return null;
 
   return (
-    <div className="flex min-h-full flex-1 bg-zinc-50 dark:bg-black">
-      <aside className="flex w-[260px] shrink-0 flex-col bg-[#2E7AB0] text-white">
+    <div className="flex h-full min-h-0 w-full flex-1 bg-zinc-50 dark:bg-black">
+      <aside className="flex h-full min-h-0 w-[260px] shrink-0 flex-col bg-[#2E7AB0] text-white">
         <div className="flex h-14 items-center gap-2 px-4">
           <button
             type="button"
@@ -124,7 +124,7 @@ export function AppShell({
           <div className="text-sm font-semibold">Get Driver Vietnam</div>
         </div>
 
-        <nav className="mt-2 flex-1 px-2 text-[13px]">
+        <nav className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 text-[13px]">
           {canView("dashboard") ? (
             <SidebarItem
               icon={<LayoutDashboard className="h-4 w-4" />}
@@ -302,8 +302,8 @@ export function AppShell({
         </div>
       </aside>
 
-      <main className="flex flex-1 flex-col">
-        <div className="flex h-14 items-center justify-end px-6">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <div className="flex h-14 shrink-0 items-center justify-end px-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-2 py-1 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2E7AB0] text-xs font-semibold text-white">
               {initials(username)}

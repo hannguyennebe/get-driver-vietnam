@@ -42,7 +42,7 @@ export default function ReservationNewPage() {
 function ReservationNewSkeleton() {
   return (
     <AppShell>
-      <div className="flex-1 px-6 pb-10">
+      <div className="px-6 pb-10">
         <div className="pt-6">
           <div className="h-7 w-56 rounded bg-zinc-200 dark:bg-zinc-800" />
           <div className="mt-2 h-4 w-80 rounded bg-zinc-100 dark:bg-zinc-900" />
@@ -205,7 +205,7 @@ function ReservationNewInner() {
 
   return (
     <AppShell>
-      <div className="flex-1 px-6 pb-10">
+      <div className="px-6 pb-10">
         <div className="pt-6">
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             Chi tiết Booking

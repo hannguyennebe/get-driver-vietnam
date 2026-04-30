@@ -73,7 +73,7 @@ export default function FinanceViTaiXePage() {
 
   return (
     <AppShell>
-      <div className="flex-1 px-6 pb-10">
+      <div className="px-6 pb-10">
         <div className="pt-6">
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             Ví tài xế
