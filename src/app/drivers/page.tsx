@@ -109,6 +109,13 @@ export default function DriversPage() {
     return msg.includes("PERMISSION_DENIED") || msg.toLowerCase().includes("permission") || code.includes("permission");
   }
 
+  function debugErr(err: unknown) {
+    const code = String((err as any)?.code ?? "").trim();
+    const msg = String((err as any)?.message ?? "").trim();
+    const name = String((err as any)?.name ?? "").trim();
+    return [code, name, msg].filter(Boolean).join(" | ");
+  }
+
   React.useEffect(() => {
     const unsubDrivers = subscribeDrivers(setDrivers);
     const unsubWallets = subscribeDriverWallets(setWallets);
@@ -481,7 +488,7 @@ export default function DriversPage() {
                     } else if (msg.includes("duplicate_employee_code")) {
                       setError("Mã nhân viên đã tồn tại.");
                     } else {
-                      setError("Không thể tạo tài xế. Vui lòng thử lại.");
+                      setError(`Không thể tạo tài xế. (${debugErr(e) || "unknown"})`);
                     }
                   } finally {
                     setSaving(false);
@@ -604,7 +611,7 @@ export default function DriversPage() {
                     if (isPermissionDenied(e)) {
                       setError("Bạn không có quyền sửa tài xế (PERMISSION_DENIED).");
                     } else {
-                      setError("Không thể lưu. Vui lòng thử lại.");
+                      setError(`Không thể lưu. (${debugErr(e) || "unknown"})`);
                     }
                   } finally {
                     setSaving(false);
