@@ -61,6 +61,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [users, setUsers] = React.useState<AdminUser[]>([]);
   const [cleanupBusy, setCleanupBusy] = React.useState(false);
+  const [salesMigrateBusy, setSalesMigrateBusy] = React.useState(false);
   const [openCreate, setOpenCreate] = React.useState(false);
   const [openPerms, setOpenPerms] = React.useState(false);
   const [openEdit, setOpenEdit] = React.useState(false);
@@ -141,6 +142,28 @@ export default function AdminPage() {
       alert(`Không dọn được ví mồ côi. (${String((e as any)?.message ?? "unknown")})`);
     } finally {
       setCleanupBusy(false);
+    }
+  }
+
+  async function migrateReservationSales() {
+    setSalesMigrateBusy(true);
+    try {
+      const res = await fetch("/api/admin/migrate-reservation-sales", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ limit: 2000 }),
+      });
+      const data = (await res.json()) as any;
+      if (!res.ok || !data?.ok) {
+        const msg = String(data?.error ?? data?.message ?? "failed");
+        alert(`Không migrate được Sales. (${msg})`);
+        return;
+      }
+      alert(`Đã cập nhật Sales cho ${Number(data?.updatedCount ?? 0) || 0} booking.`);
+    } catch (e) {
+      alert(`Không migrate được Sales. (${String((e as any)?.message ?? "unknown")})`);
+    } finally {
+      setSalesMigrateBusy(false);
     }
   }
 
@@ -319,6 +342,22 @@ export default function AdminPage() {
                 }}
               >
                 {cleanupBusy ? "Đang dọn ví…" : "Dọn ví mồ côi"}
+              </Button>
+            ) : null}
+            {session?.role === "Admin" ? (
+              <Button
+                variant="secondary"
+                className="h-9"
+                disabled={salesMigrateBusy}
+                onClick={() => {
+                  const ok = window.confirm(
+                    "Chuẩn hoá Sales của các booking cũ: nếu Sales đang là SĐT và trùng SĐT nhân viên thì đổi sang Tên nhân viên. Tiếp tục?",
+                  );
+                  if (!ok) return;
+                  void migrateReservationSales();
+                }}
+              >
+                {salesMigrateBusy ? "Đang cập nhật Sales…" : "Chuẩn hoá Sales (tên NV)"}
               </Button>
             ) : null}
             <Button
