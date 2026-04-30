@@ -9,9 +9,12 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".firebase/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Firebase Functions build output:
+    "functions/lib/**",
   ]),
   // Project pragmatics: this codebase intentionally uses some patterns that
   // eslint-config-next flags aggressively (e.g. state initialization effects,
