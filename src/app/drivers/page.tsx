@@ -17,7 +17,11 @@ import {
   odCodeFromExternal,
   type DriverWallet,
 } from "@/lib/fleet/driverWalletStore";
-import { deleteDriverFs, subscribeDrivers, upsertDriverFs } from "@/lib/fleet/driversFirestore";
+import {
+  deleteDriverAndWalletFs,
+  subscribeDrivers,
+  upsertDriverFs,
+} from "@/lib/fleet/driversFirestore";
 import {
   adjustDriverWalletBalanceFs,
   ensureWalletForExternalDispatchFs,
@@ -367,7 +371,7 @@ export default function DriversPage() {
                       });
                       setOpenEdit(true);
                     }}
-                    onDelete={() => void deleteDriverFs(d.employeeCode)}
+                    onDelete={() => void deleteDriverAndWalletFs(d.employeeCode)}
                   />
                 ))}
                 {filtered.length === 0 ? (

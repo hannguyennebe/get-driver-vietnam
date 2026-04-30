@@ -6,12 +6,15 @@ import {
   orderBy,
   query,
   setDoc,
+  writeBatch,
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import type { Driver } from "@/lib/fleet/driverStore";
+import { rosterWalletKey } from "@/lib/fleet/driverWalletStore";
 
 const COL = "drivers";
+const WALLETS_COL = "driverWallets";
 
 function stripUndefined<T>(obj: T): T {
   // Firestore rejects `undefined` field values. This removes them recursively.
@@ -50,5 +53,16 @@ export async function upsertDriverFs(next: Driver) {
 export async function deleteDriverFs(employeeCode: string) {
   const db = getFirebaseDb();
   await deleteDoc(doc(db, COL, String(employeeCode)));
+}
+
+/** Deleting a driver also deletes their roster wallet (`emp:{employeeCode}`). */
+export async function deleteDriverAndWalletFs(employeeCode: string) {
+  const db = getFirebaseDb();
+  const id = String(employeeCode || "").trim();
+  if (!id) throw new Error("missing_employee_code");
+  const batch = writeBatch(db);
+  batch.delete(doc(db, COL, id));
+  batch.delete(doc(db, WALLETS_COL, rosterWalletKey(id)));
+  await batch.commit();
 }
 
