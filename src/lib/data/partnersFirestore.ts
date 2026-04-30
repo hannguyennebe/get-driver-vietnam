@@ -15,6 +15,18 @@ import type { Supplier, TravelAgent } from "@/lib/data/partnersStore";
 const COL_TA = "partners_travelAgents";
 const COL_SUP = "partners_suppliers";
 
+function stripUndefined<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(stripUndefined) as any;
+  if (typeof obj !== "object") return obj;
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj as any)) {
+    if (v === undefined) continue;
+    out[k] = stripUndefined(v);
+  }
+  return out as T;
+}
+
 export function subscribeTravelAgents(onRows: (rows: TravelAgent[]) => void): Unsubscribe {
   const db = getFirebaseDb();
   const q = query(collection(db, COL_TA), orderBy("name", "asc"));
@@ -61,7 +73,7 @@ export async function upsertTravelAgentFs(next: TravelAgent) {
   const db = getFirebaseDb();
   const id = String(next.id || "").trim();
   if (!id) throw new Error("missing_id");
-  await setDoc(doc(db, COL_TA, id), next, { merge: false });
+  await setDoc(doc(db, COL_TA, id), stripUndefined(next), { merge: false });
 }
 
 export async function deleteTravelAgentFs(id: string) {
@@ -73,7 +85,7 @@ export async function upsertSupplierFs(next: Supplier) {
   const db = getFirebaseDb();
   const id = String(next.id || "").trim();
   if (!id) throw new Error("missing_id");
-  await setDoc(doc(db, COL_SUP, id), next, { merge: false });
+  await setDoc(doc(db, COL_SUP, id), stripUndefined(next), { merge: false });
 }
 
 export async function deleteSupplierFs(id: string) {

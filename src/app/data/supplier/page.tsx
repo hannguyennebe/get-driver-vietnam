@@ -319,9 +319,9 @@ export default function SupplierPage() {
                   void upsertSupplierFs({
                     id,
                     name: form.name.trim(),
-                    contactName: form.contactName.trim() || undefined,
-                    phone: form.phone.trim() || undefined,
-                    email: form.email.trim() || undefined,
+                    contactName: form.contactName.trim() || "",
+                    phone: form.phone.trim() || "",
+                    email: form.email.trim() || "",
                     paymentType: form.paymentType,
                     paymentTerms: form.terms,
                   });
