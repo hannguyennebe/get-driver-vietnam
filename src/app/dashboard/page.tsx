@@ -251,32 +251,35 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {dayTrips.map((t) => (
-                <ScheduleCard
-                  key={t.id}
-                  trip={t}
-                  onCancelConfirmed={() => {
-                    if (t.kind === "reservation") {
-                      void cancelReservationFirestore(t.id, { cancelledFrom: "reservation" });
-                    } else {
-                      void deleteCalendarTripFs(t.id);
-                    }
-                  }}
-                  onEditBooking={() =>
-                    router.push(`/reservation/new?code=${encodeURIComponent(t.id)}&from=dashboard`)
-                  }
-                  onEditDispatch={() =>
-                    router.push(`/dispatch?code=${encodeURIComponent(t.id)}`)
-                  }
-                />
-              ))}
-              {dayTrips.length === 0 ? (
-                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/30 dark:text-zinc-300 lg:col-span-2">
-                  Không có chuyến nào trong ngày này.
+            {dayTrips.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-6 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/30 dark:text-zinc-300">
+                Không có chuyến nào trong ngày này.
+              </div>
+            ) : (
+              <div className="mt-4 -mx-5 overflow-x-auto px-5">
+                <div className="flex gap-4">
+                  {dayTrips.map((t) => (
+                    <ScheduleCard
+                      key={t.id}
+                      trip={t}
+                      onCancelConfirmed={() => {
+                        if (t.kind === "reservation") {
+                          void cancelReservationFirestore(t.id, { cancelledFrom: "reservation" });
+                        } else {
+                          void deleteCalendarTripFs(t.id);
+                        }
+                      }}
+                      onEditBooking={() =>
+                        router.push(`/reservation/new?code=${encodeURIComponent(t.id)}&from=dashboard`)
+                      }
+                      onEditDispatch={() =>
+                        router.push(`/dispatch?code=${encodeURIComponent(t.id)}`)
+                      }
+                    />
+                  ))}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            )}
 
             <div className="mt-5">
               <button
@@ -602,7 +605,7 @@ function ScheduleCard({
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="w-[calc((100vw-3rem)/5)] min-w-[280px] max-w-[420px] shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex items-center justify-between gap-2 bg-[#E9F4FF] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="rounded bg-[#D7ECFF] px-2 py-1 text-[10px] font-semibold text-[#0B79B8]">
