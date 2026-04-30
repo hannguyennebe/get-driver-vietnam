@@ -227,26 +227,28 @@ export default function CalendarPage() {
                   <div>Nhấn vào ngày trên lịch để xem danh sách chuyến</div>
                 </div>
               ) : (
-                <div className="mt-4 space-y-3">
-                  {selectedTrips.map((t) => (
-                    <TripRow
-                      key={t.id}
-                      t={t}
-                      canCancel={t.date >= toYmd(new Date())}
-                      canEdit={reservationCodes.has(t.id)}
-                      onEdit={() =>
-                        router.push(`/reservation/new?code=${encodeURIComponent(t.id)}&from=calendar`)
-                      }
-                      onCancel={() => {
-                        setCancelTrip(t);
-                        setOpenCancel(true);
-                      }}
-                      onOpen={() => {
-                        setBooking(t);
-                        setOpenBooking(true);
-                      }}
-                    />
-                  ))}
+                <div className="mt-4 -mx-5 overflow-x-auto px-5">
+                  <div className="flex gap-3">
+                    {selectedTrips.map((t) => (
+                      <TripRow
+                        key={t.id}
+                        t={t}
+                        canCancel={t.date >= toYmd(new Date())}
+                        canEdit={reservationCodes.has(t.id)}
+                        onEdit={() =>
+                          router.push(`/reservation/new?code=${encodeURIComponent(t.id)}&from=calendar`)
+                        }
+                        onCancel={() => {
+                          setCancelTrip(t);
+                          setOpenCancel(true);
+                        }}
+                        onOpen={() => {
+                          setBooking(t);
+                          setOpenBooking(true);
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -487,7 +489,7 @@ function TripRow({
   return (
     <div
       onDoubleClick={onOpen}
-      className="w-full rounded-lg border border-zinc-200 bg-white p-3 text-left text-sm shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900/40"
+      className="w-[calc((100vw-4rem-420px-1.5rem-12px)/5)] min-w-[240px] max-w-[340px] shrink-0 rounded-lg border border-zinc-200 bg-white p-3 text-left text-sm shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900/40"
       title="Double click để xem chi tiết"
       role="button"
       tabIndex={0}
