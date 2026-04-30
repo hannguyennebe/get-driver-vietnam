@@ -143,23 +143,32 @@ export default function FinancePhaiTraPage() {
                 Danh sách nghĩa vụ chi theo kỳ (accrual) và hạn thanh toán.
               </p>
             </div>
-            <Button
-              className={earthBtnClass}
-              onClick={() => {
-                setAddError(null);
-                setForm({
-                  name: "",
-                  amountVnd: "",
-                  accrualMonth: String(new Date().getMonth() + 1),
-                  accrualYear: String(new Date().getFullYear()),
-                  dueDateISO: todayIso(),
-                  note: "",
-                });
-                setOpenAdd(true);
-              }}
-            >
-              + Thêm khoản phải trả
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                className={earthBtnClass}
+                onClick={() => router.push("/finance/danh-muc-chi-van-phong")}
+              >
+                + Thêm danh mục
+              </Button>
+              <Button
+                variant="secondary"
+                className="h-9"
+                onClick={() => {
+                  setAddError(null);
+                  setForm({
+                    name: "",
+                    amountVnd: "",
+                    accrualMonth: String(new Date().getMonth() + 1),
+                    accrualYear: String(new Date().getFullYear()),
+                    dueDateISO: todayIso(),
+                    note: "",
+                  });
+                  setOpenAdd(true);
+                }}
+              >
+                + Thêm khoản phải trả
+              </Button>
+            </div>
           </div>
 
           <div className="mt-4 max-w-lg">
