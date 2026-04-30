@@ -7,7 +7,6 @@ import {
   query,
   setDoc,
   updateDoc,
-  where,
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
@@ -50,7 +49,6 @@ export function subscribeActiveReservations(
   const db = getFirebaseDb();
   const q = query(
     collection(db, COL),
-    where("isCancelled", "==", false),
     orderBy("createdAt", "desc"),
   );
   return onSnapshot(
@@ -58,11 +56,16 @@ export function subscribeActiveReservations(
     (snap) => {
       const rows: Reservation[] = [];
       snap.forEach((d) => {
-        rows.push(d.data() as Reservation);
+        const data = d.data() as ReservationDoc;
+        if (data.isCancelled) return;
+        rows.push(data as Reservation);
       });
       onRows(rows);
     },
-    () => onRows([]),
+    (err) => {
+      // Avoid wiping UI due to transient/index errors; keep last known rows.
+      console.error("[reservations][subscribeActiveReservations] snapshot failed", err);
+    },
   );
 }
 
@@ -72,7 +75,6 @@ export function subscribeCancelledReservations(
   const db = getFirebaseDb();
   const q = query(
     collection(db, COL),
-    where("isCancelled", "==", true),
     orderBy("cancelledAt", "desc"),
   );
   return onSnapshot(
@@ -80,11 +82,15 @@ export function subscribeCancelledReservations(
     (snap) => {
       const rows: CancelledReservation[] = [];
       snap.forEach((d) => {
-        rows.push(d.data() as CancelledReservation);
+        const data = d.data() as ReservationDoc;
+        if (!data.isCancelled) return;
+        rows.push(data as CancelledReservation);
       });
       onRows(rows);
     },
-    () => onRows([]),
+    (err) => {
+      console.error("[reservations][subscribeCancelledReservations] snapshot failed", err);
+    },
   );
 }
 

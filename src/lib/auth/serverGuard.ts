@@ -5,13 +5,41 @@ import { redirect } from "next/navigation";
 import { getAdminServices } from "@/lib/firebase/adminServer";
 
 const COOKIE_NAME = "getdriver_session";
+const DEMO_COOKIE_NAME = "getdriver_demo_session";
 
 export type ClaimsPermissions = { view?: string[]; edit?: string[] } | undefined;
 
 export async function requireSessionClaims() {
   const cookieStore = await cookies();
   const session = cookieStore.get(COOKIE_NAME)?.value;
-  if (!session) redirect("/login");
+  if (!session) {
+    // Demo fallback: allow navigation when Firebase isn't configured.
+    // This is intentionally disabled in production.
+    if (process.env.NODE_ENV !== "production") {
+      const demo = cookieStore.get(DEMO_COOKIE_NAME)?.value;
+      if (demo) {
+        try {
+          const parsed = JSON.parse(demo) as {
+            username?: string;
+            role?: string;
+            permissions?: { view?: string[]; edit?: string[] };
+          };
+          const perms = parsed.permissions ?? {};
+          return {
+            uid: `demo:${String(parsed.username ?? "").trim() || "user"}`,
+            role: parsed.role ?? "Admin",
+            perms: {
+              view: Array.isArray(perms.view) ? perms.view : [],
+              edit: Array.isArray(perms.edit) ? perms.edit : [],
+            },
+          } as any;
+        } catch {
+          // fall through to redirect
+        }
+      }
+    }
+    redirect("/login");
+  }
 
   const { auth } = getAdminServices();
   try {

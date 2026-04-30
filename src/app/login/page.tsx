@@ -102,7 +102,17 @@ export default function LoginPage() {
         setError("Sai tên đăng nhập hoặc mật khẩu.");
         return;
       }
-      setDemoSession({ username: phone, role, createdAt: Date.now() });
+      const demoSession = { username: phone, role, createdAt: Date.now() };
+      setDemoSession(demoSession);
+      try {
+        await fetch("/api/auth/demo-session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(demoSession),
+        });
+      } catch {
+        // Ignore: demo UI can still work client-side, but server-guarded pages may require re-login.
+      }
       router.replace("/dashboard");
       return;
     }

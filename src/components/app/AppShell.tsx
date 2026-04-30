@@ -289,6 +289,7 @@ export function AppShell({
               // Clear server session cookie (URL-typing protection)
               try {
                 fetch("/api/auth/session", { method: "DELETE" });
+                fetch("/api/auth/demo-session", { method: "DELETE" });
               } catch {
                 // ignore
               }
