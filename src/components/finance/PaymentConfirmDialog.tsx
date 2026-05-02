@@ -105,8 +105,9 @@ export function PaymentConfirmDialog(props: {
       const keys = Object.keys(b)
         .map((x) => String(x || "").trim().toUpperCase())
         .filter(Boolean);
-      const pos = keys.filter((k) => (Number((b as any)?.[k] ?? 0) || 0) > 0);
-      return pos;
+      // Luôn cho chọn loại tiền có trong ví (kể cả số dư 0); kiểm tra đủ tiền lúc bấm Xác nhận.
+      if (keys.length > 0) return keys;
+      return ["VND"];
     }
     return ["VND", "USD", "OTHER"];
   }, [source, sourceLockedCurrency, cashBalances, wallets, walletKey]);
@@ -281,11 +282,15 @@ export function PaymentConfirmDialog(props: {
                 if (source === "CASH" && allowedCurrencies.length === 0) {
                   return setError("Tiền mặt không có số dư dương để thanh toán.");
                 }
-                if (source === "WALLET" && allowedCurrencies.length === 0) {
-                  return setError("Ví tài xế không có số dư dương để thanh toán.");
-                }
                 const cur = (effectiveCurrency || "").trim().toUpperCase();
                 if (!cur) return setError("Vui lòng chọn loại tiền.");
+                if (source === "WALLET" && walletKey) {
+                  const w = wallets.find((x) => x.key === walletKey);
+                  const bal = Number((w?.balances as any)?.[cur] ?? 0) || 0;
+                  if (num > bal) {
+                    return setError("Số dư ví không đủ cho loại tiền đã chọn.");
+                  }
+                }
                 if (String(currency).toUpperCase() === "OTHER" && cur.length < 3) {
                   return setError("Mã tiền tệ không hợp lệ.");
                 }
