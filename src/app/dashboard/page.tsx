@@ -5,7 +5,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { deleteCalendarTripFs, subscribeCalendarTrips } from "@/lib/calendar/tripsFirestore";
 import type { Trip } from "@/lib/calendar/tripsStore";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Pencil } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +28,12 @@ export default function DashboardPage() {
     monthCancelled: 0,
     donut: { executed: 0, cancelled: 0, reservation: 0 },
   }));
-  const [todayIso, setTodayIso] = React.useState(() => toIsoDate(new Date()));
+  const initialDay = React.useMemo(() => toIsoDate(new Date()), []);
+  /** Ngày theo đồng hồ máy (KPI, “hôm nay” thật). */
+  const [realTodayIso, setRealTodayIso] = React.useState(initialDay);
+  /** Ngày đang xem lịch trình (mũi tên). */
+  const [viewDayIso, setViewDayIso] = React.useState(initialDay);
+  const prevRealTodayRef = React.useRef(initialDay);
   const [latest, setLatest] = React.useState<
     Array<{
       code: string;
@@ -62,11 +67,22 @@ export default function DashboardPage() {
   const [calendarTrips, setCalendarTrips] = React.useState<Trip[]>([]);
 
   React.useEffect(() => {
-    // Keep in sync with user's local timezone date (realtime; flips at midnight)
-    const tick = () => setTodayIso(toIsoDate(new Date()));
+    const tick = () => {
+      const next = toIsoDate(new Date());
+      setRealTodayIso(next);
+      setViewDayIso((v) => (v === prevRealTodayRef.current ? next : v));
+      prevRealTodayRef.current = next;
+    };
     tick();
     const id = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(id);
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   React.useEffect(() => {
@@ -78,8 +94,10 @@ export default function DashboardPage() {
       const cancelledCodes = new Set(cancelled.map((x) => x.code));
       const reservationCodes = new Set(active.map((x) => x.code));
 
-      const tomorrowIso = toIsoDate(addDays(new Date(), 1));
-      const monthPrefix = todayIso.slice(0, 7);
+      const realDate = isoToDate(realTodayIso);
+      const tomorrowIso =
+        realDate != null ? toIsoDate(addDays(realDate, 1)) : toIsoDate(addDays(new Date(), 1));
+      const monthPrefix = realTodayIso.slice(0, 7);
 
       const manualTrips = trips.filter((t) => !reservationCodes.has(t.id));
 
@@ -105,7 +123,7 @@ export default function DashboardPage() {
       };
 
       const reservationDay = active
-        .filter((r) => dmyToIso(r.date) === todayIso)
+        .filter((r) => dmyToIso(r.date) === viewDayIso)
         .map((r) => ({
           id: r.code,
           kind: "reservation" as const,
@@ -124,7 +142,7 @@ export default function DashboardPage() {
           thuHoVnd: r.thuHoCurrency === "VND" ? r.thuHoAmount : 0,
         }));
       const demoDay = manualTrips
-        .filter((t) => t.date === todayIso && !cancelledCodes.has(t.id))
+        .filter((t) => t.date === viewDayIso && !cancelledCodes.has(t.id))
         .map((t) => ({
           id: t.id,
           kind: "calendar" as const,
@@ -160,7 +178,7 @@ export default function DashboardPage() {
       setLatest(latestRows);
 
       setStats({
-        today: countUnionByIso(todayIso),
+        today: countUnionByIso(realTodayIso),
         tomorrow: countUnionByIso(tomorrowIso),
         monthTotal: countUnionByMonth(monthPrefix),
         monthCancelled,
@@ -172,7 +190,7 @@ export default function DashboardPage() {
     return () => {
       // no-op
     };
-  }, [todayIso, activeReservations, cancelledReservations, calendarTrips]);
+  }, [realTodayIso, viewDayIso, activeReservations, cancelledReservations, calendarTrips]);
 
   React.useEffect(() => {
     const unsubA = subscribeActiveReservations((rows) => setActiveReservations(rows as any));
@@ -236,19 +254,48 @@ export default function DashboardPage() {
 
           <div className="mt-6 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             <div className="grid w-full min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-[#B8D4EA]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:border-zinc-600 sm:grid-cols-3 sm:divide-x sm:divide-[#B8D4EA]/50 dark:sm:divide-zinc-600">
-              {/* Cột 1 — ngày: xanh nhẹ */}
-              <div className="flex min-h-[76px] min-w-0 flex-col justify-center bg-gradient-to-br from-[#E8F4FC] via-[#EDF6FB] to-[#DCEEF9] px-4 py-3 dark:from-[#152836]/90 dark:via-[#1a3048]/90 dark:to-[#132638]/90">
-                <div className="text-sm font-semibold leading-snug text-[#1a5278] dark:text-sky-100">
-                  {vnDmyTitleFromIso(todayIso)}
+              {/* Cột 1 — ngày: xanh nhẹ + mũi tên đổi ngày */}
+              <div className="flex min-h-[76px] min-w-0 flex-col justify-center bg-gradient-to-br from-[#E8F4FC] via-[#EDF6FB] to-[#DCEEF9] px-3 py-3 sm:px-4 dark:from-[#152836]/90 dark:via-[#1a3048]/90 dark:to-[#132638]/90">
+                <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#7eb3d4]/60 bg-white/70 text-[#1a5278] shadow-sm transition hover:bg-white hover:shadow dark:border-sky-700/50 dark:bg-[#1a3048]/80 dark:text-sky-100 dark:hover:bg-[#234a62]/90"
+                    aria-label="Ngày trước"
+                    onClick={() => setViewDayIso((v) => shiftIsoDays(v, -1))}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <div className="min-w-0 flex-1 text-center">
+                    <div className="text-sm font-semibold leading-snug text-[#1a5278] dark:text-sky-100">
+                      {vnDmyTitleFromIso(viewDayIso)}
+                    </div>
+                    {viewDayIso !== realTodayIso ? (
+                      <button
+                        type="button"
+                        className="mt-1 text-[11px] font-semibold text-[#2E7AB0] underline decoration-[#2E7AB0]/40 underline-offset-2 hover:text-[#256994] dark:text-sky-300"
+                        onClick={() => setViewDayIso(realTodayIso)}
+                      >
+                        Về hôm nay
+                      </button>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#7eb3d4]/60 bg-white/70 text-[#1a5278] shadow-sm transition hover:bg-white hover:shadow dark:border-sky-700/50 dark:bg-[#1a3048]/80 dark:text-sky-100 dark:hover:bg-[#234a62]/90"
+                    aria-label="Ngày sau"
+                    onClick={() => setViewDayIso((v) => shiftIsoDays(v, 1))}
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
                 </div>
-                <div className="mt-1 text-xs font-medium text-[#4a88aa] dark:text-sky-200/80">
-                  Lịch trình hôm nay
+                <div className="mt-2 text-center text-xs font-medium text-[#4a88aa] dark:text-sky-200/80">
+                  Lịch trình
                 </div>
               </div>
               {/* Cột 2 — số chuyến: trắng + nhấn xanh/vàng đất */}
               <div className="flex min-h-[76px] min-w-0 flex-col items-center justify-center gap-1 border-t border-[#B8D4EA]/50 bg-white px-4 py-3 dark:border-zinc-600 dark:bg-zinc-950 sm:border-t-0">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-[#7a9aae] dark:text-zinc-400">
-                  Số chuyến hôm nay
+                  Số chuyến trong ngày
                 </span>
                 <div className="flex items-baseline gap-1">
                   <span className="text-2xl font-bold tabular-nums text-[#2E7AB0] dark:text-sky-300">
@@ -454,6 +501,12 @@ function addDays(d: Date, days: number) {
   const next = new Date(d);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function shiftIsoDays(iso: string, delta: number) {
+  const d = isoToDate(iso);
+  if (!d) return iso;
+  return toIsoDate(addDays(d, delta));
 }
 
 function dmyToIso(dmy: string) {
