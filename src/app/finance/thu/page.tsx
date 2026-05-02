@@ -20,7 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type PartnerPaymentTerms } from "@/lib/data/partnersStore";
 import type { ThuHoPayment } from "@/lib/finance/thuHoReportStore";
-import { PaymentConfirmDialog } from "@/components/finance/PaymentConfirmDialog";
+import { PaymentConfirmDialogCredit } from "@/components/finance/PaymentConfirmDialog";
+import { ThuHoTransactionDialog } from "@/components/finance/ThuHoTransactionDialog";
 import type { CashbookEntry } from "@/lib/finance/cashbookStore";
 import { addCashbookEntryFs, subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
 import { addThuHoPaymentFs, subscribeThuHoPayments } from "@/lib/finance/thuHoFirestore";
@@ -525,7 +526,7 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2">Giờ đi</th>
                       <th className="px-3 py-2">Hành trình</th>
                       <th className="px-3 py-2 text-right">Số tiền thu hộ</th>
-                      <th className="px-3 py-2 text-right">Thanh Toán</th>
+                      <th className="px-3 py-2 text-right">Thu Tiền</th>
                       <th className="px-3 py-2 text-center">Đã Thu Đủ</th>
                     </tr>
                   </thead>
@@ -563,7 +564,7 @@ export default function FinanceThuPage() {
                                 setOpenPayConfirm(true);
                               }}
                             >
-                              Thanh Toán
+                              Thu Tiền
                             </Button>
                           </td>
                           <td className="px-3 py-2 text-center">
@@ -686,14 +687,12 @@ export default function FinanceThuPage() {
         </DialogContent>
       </Dialog>
 
-      <PaymentConfirmDialog
+      <ThuHoTransactionDialog
         open={openPayConfirm}
         onOpenChange={(v) => {
           setOpenPayConfirm(v);
           if (!v) setThuHoBookingCode(null);
         }}
-        title="Thanh toán Thu Hộ"
-        description="Bước 1: chọn nguồn tiền. Bước 2: chọn loại tiền và nhập số tiền."
         defaultCurrency={(thuHoForm.currency ?? "VND") as any}
         defaultAmount={Number(String(thuHoForm.amount).replace(/[^\d.]/g, "")) || undefined}
         onConfirm={(r) => {
@@ -732,7 +731,7 @@ export default function FinanceThuPage() {
         }}
       />
 
-      <PaymentConfirmDialog
+      <PaymentConfirmDialogCredit
         open={openArPay}
         onOpenChange={(v) => {
           setOpenArPay(v);
@@ -777,7 +776,7 @@ export default function FinanceThuPage() {
         }}
       />
 
-      <PaymentConfirmDialog
+      <PaymentConfirmDialogCredit
         open={openArAgentPay}
         onOpenChange={(v) => {
           setOpenArAgentPay(v);
