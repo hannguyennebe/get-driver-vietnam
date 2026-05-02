@@ -70,6 +70,7 @@ function DispatchInner() {
     supplierId: "",
     supplierPaymentType: "" as "" | "Phải Trả" | "Công Nợ",
   });
+  const [confirmBusy, setConfirmBusy] = React.useState(false);
 
   React.useEffect(() => {
     const unsub = subscribeActiveReservations(setOrders);
@@ -423,36 +424,54 @@ function DispatchInner() {
                 <Button
                   className="h-10 w-1/2 text-zinc-900 shadow-sm bg-gradient-to-b from-[#E6C36A] to-[#C79A2B] hover:from-[#EBCB7A] hover:to-[#B98A1F] active:from-[#DDBA5D] active:to-[#A87912] disabled:opacity-60"
                   disabled={
-                    tab === "internal"
+                    confirmBusy ||
+                    (tab === "internal"
                       ? !selectedDriverCode || !selectedPlate
                       : !extForm.name.trim() ||
                         !extForm.phone.trim() ||
-                        !extForm.plate.trim()
+                        !extForm.plate.trim())
                   }
-                  onClick={() => {
-                    if (!order) return;
+                  onClick={async () => {
+                    if (!order || confirmBusy) return;
                     if (tab === "internal") {
                       if (!selectedDriverCode || !selectedPlate) return;
                       const d = drivers.find(
                         (x) => x.employeeCode === selectedDriverCode,
                       );
                       if (!d) return;
-                      void patchReservation(order.code, {
-                        status: "Đã điều xe",
-                        assignedDriver: d.name,
-                        assignedDriverPhone: d.phone,
-                        assignedVehiclePlate: selectedPlate,
-                        assignedExternalPriceVnd: null,
-                        assignedSupplierId: null,
-                        assignedSupplierPaymentType: null,
-                      } as any);
-                      void ensureWalletForRosterDriverFs(d.employeeCode, d.name);
-                    } else {
-                      const price = Number(extForm.priceVnd.replace(/[^\d]/g, ""));
-                      const nm = extForm.name.trim();
-                      const ph = extForm.phone.trim();
-                      const pl = extForm.plate.trim();
-                      void patchReservation(order.code, {
+                      setConfirmBusy(true);
+                      try {
+                        await patchReservation(order.code, {
+                          status: "Đã điều xe",
+                          assignedDriver: d.name,
+                          assignedDriverPhone: d.phone,
+                          assignedVehiclePlate: selectedPlate,
+                          assignedExternalPriceVnd: null,
+                          assignedSupplierId: null,
+                          assignedSupplierPaymentType: null,
+                        } as any);
+                        try {
+                          await ensureWalletForRosterDriverFs(d.employeeCode, d.name);
+                        } catch (e) {
+                          console.error("[dispatch] ensure roster wallet", e);
+                        }
+                        setOpen(false);
+                        setOrder(null);
+                        router.replace("/dashboard");
+                      } catch (e) {
+                        console.error("[dispatch] patch reservation (internal)", e);
+                      } finally {
+                        setConfirmBusy(false);
+                      }
+                      return;
+                    }
+                    const price = Number(extForm.priceVnd.replace(/[^\d]/g, ""));
+                    const nm = extForm.name.trim();
+                    const ph = extForm.phone.trim();
+                    const pl = extForm.plate.trim();
+                    setConfirmBusy(true);
+                    try {
+                      await patchReservation(order.code, {
                         status: "Đã điều xe",
                         assignedDriver: nm,
                         assignedDriverPhone: ph,
@@ -461,9 +480,19 @@ function DispatchInner() {
                         assignedSupplierId: extForm.supplierId || null,
                         assignedSupplierPaymentType: extForm.supplierPaymentType || null,
                       } as any);
-                      void ensureWalletForExternalDispatchFs(nm, ph, pl);
+                      try {
+                        await ensureWalletForExternalDispatchFs(nm, ph, pl);
+                      } catch (e) {
+                        console.error("[dispatch] ensure external wallet", e);
+                      }
+                      setOpen(false);
+                      setOrder(null);
+                      router.replace("/dashboard");
+                    } catch (e) {
+                      console.error("[dispatch] patch reservation (external)", e);
+                    } finally {
+                      setConfirmBusy(false);
                     }
-                    setOpen(false);
                   }}
                 >
                   ✓ Xác nhận điều xe
