@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -41,5 +42,10 @@ export async function addThuHoPaymentFs(input: Omit<ThuHoPayment, "id" | "create
   };
   await setDoc(doc(db, COL, next.id), next, { merge: false });
   return next;
+}
+
+export async function deleteThuHoPaymentFs(id: string): Promise<void> {
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, COL, id));
 }
 

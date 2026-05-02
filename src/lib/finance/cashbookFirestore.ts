@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -59,5 +60,10 @@ export async function addCashbookEntryFs(
   };
   await setDoc(doc(db, COL, next.id), stripUndefined(next), { merge: false });
   return next;
+}
+
+export async function deleteCashbookEntryFs(id: string): Promise<void> {
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, COL, id));
 }
 

@@ -26,6 +26,8 @@ import type { CashbookEntry } from "@/lib/finance/cashbookStore";
 import { addCashbookEntryFs, subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
 import { addThuHoPaymentFs, subscribeThuHoPayments } from "@/lib/finance/thuHoFirestore";
 import { adjustDriverWalletBalanceFs } from "@/lib/fleet/driverWalletsFirestore";
+import { getDemoSession } from "@/lib/auth/demo";
+import { undoThuHoBookingFs } from "@/lib/finance/undoThuHoBooking";
 // PDF is generated server-side (avoid fontkit browser crashes)
 
 export default function FinanceThuPage() {
@@ -63,6 +65,7 @@ export default function FinanceThuPage() {
   const [agentPdfBusy, setAgentPdfBusy] = React.useState(false);
   const [agentPdfError, setAgentPdfError] = React.useState<string | null>(null);
   const [agentPdfAgentId, setAgentPdfAgentId] = React.useState<string | null>(null);
+  const [undoBusyCode, setUndoBusyCode] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setPaidFlags(readPaidFlags());
@@ -527,7 +530,10 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2">Hành trình</th>
                       <th className="px-3 py-2 text-right">Số tiền thu hộ</th>
                       <th className="px-3 py-2 text-right">Thu Tiền</th>
-                      <th className="px-3 py-2 text-center">Đã Thu Đủ</th>
+                      <th className="px-3 py-2 text-center">
+                        <span className="block">Đã Thu Đủ</span>
+                        <span className="block text-[10px] font-normal text-zinc-500">Hoàn tác: Admin</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
@@ -539,6 +545,7 @@ export default function FinanceThuPage() {
                       const disabled = remainAmt <= 0;
                       const flagKey = paidFlagKeyThuHo(r.code);
                       const forcedPaid = Boolean(paidFlags[flagKey]);
+                      const isAdmin = getDemoSession()?.role === "Admin";
 
                       return (
                         <tr key={r.code} className="bg-white dark:bg-zinc-950">
@@ -549,7 +556,9 @@ export default function FinanceThuPage() {
                           <td className="px-3 py-2">{r.time}</td>
                           <td className="px-3 py-2">{r.itinerary || "—"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">
-                            {formatMoneyMulti(row.total, true)}
+                            {forcedPaid
+                              ? `0 ${prefer}`
+                              : formatMoneyMulti(row.total, true)}
                           </td>
                           <td className="px-3 py-2 text-right">
                             <Button
@@ -568,15 +577,57 @@ export default function FinanceThuPage() {
                             </Button>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={forcedPaid}
-                              onChange={(e) => {
-                                const next = { ...paidFlags, [flagKey]: e.target.checked };
-                                setPaidFlags(next);
-                                writePaidFlags(next);
-                              }}
-                            />
+                            {!forcedPaid ? (
+                              <input
+                                type="checkbox"
+                                checked={Boolean(paidFlags[flagKey])}
+                                onChange={(e) => {
+                                  const next = { ...paidFlags, [flagKey]: e.target.checked };
+                                  setPaidFlags(next);
+                                  writePaidFlags(next);
+                                }}
+                                title="Đánh dấu đã thu đủ (hiển thị 0)"
+                              />
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-9 rounded-lg border border-zinc-300 bg-white text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                                disabled={!isAdmin || undoBusyCode !== null}
+                                title={
+                                  isAdmin
+                                    ? "Hoàn tác: xóa ghi nhận thu hộ trên server và bỏ đánh dấu"
+                                    : "Chỉ Admin mới hoàn tác được"
+                                }
+                                onClick={() => {
+                                  if (!isAdmin) return;
+                                  if (
+                                    !confirm(
+                                      "Hoàn tác sẽ xóa toàn bộ ghi nhận Thu hộ cho booking này (sổ quỹ, báo cáo thu hộ, hoàn tiền ví nếu có). Tiếp tục?",
+                                    )
+                                  )
+                                    return;
+                                  void (async () => {
+                                    setUndoBusyCode(r.code);
+                                    try {
+                                      await undoThuHoBookingFs(r.code, cashbook, thuHoPayments);
+                                      const next = { ...paidFlags };
+                                      delete next[flagKey];
+                                      setPaidFlags(next);
+                                      writePaidFlags(next);
+                                    } catch (err) {
+                                      window.alert(
+                                        String((err as { message?: unknown })?.message ?? err ?? "Hoàn tác thất bại."),
+                                      );
+                                    } finally {
+                                      setUndoBusyCode(null);
+                                    }
+                                  })();
+                                }}
+                              >
+                                {undoBusyCode === r.code ? "Đang xử lý…" : "Hoàn Tác"}
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
