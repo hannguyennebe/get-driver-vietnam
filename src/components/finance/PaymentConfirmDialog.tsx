@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getPaymentInfo } from "@/lib/admin/paymentStore";
-import { ensureDriverWalletStore, listDriverWallets } from "@/lib/fleet/driverWalletStore";
+import type { DriverWallet } from "@/lib/fleet/driverWalletStore";
+import { subscribeDriverWallets } from "@/lib/fleet/driverWalletsFirestore";
 import { listCashbookEntries } from "@/lib/finance/cashbookStore";
 
 export type PaymentSourceKind = "CASH" | "BANK_VAT_VND" | "BANK_NOVAT_VND" | "BANK_USD" | "WALLET";
@@ -46,10 +47,11 @@ export function PaymentConfirmDialog(props: {
   const [amount, setAmount] = React.useState<string>(props.defaultAmount != null ? String(props.defaultAmount) : "");
 
   const paymentInfo = React.useMemo(() => (typeof window === "undefined" ? null : getPaymentInfo()), []);
-  const wallets = React.useMemo(() => {
-    if (typeof window === "undefined") return [];
-    ensureDriverWalletStore();
-    return listDriverWallets();
+  const [wallets, setWallets] = React.useState<DriverWallet[]>([]);
+
+  React.useEffect(() => {
+    const unsub = subscribeDriverWallets(setWallets);
+    return () => unsub();
   }, []);
   const walletOptions = React.useMemo(() => {
     const roster = wallets.filter((w) => w.source === "roster");
@@ -192,7 +194,7 @@ export function PaymentConfirmDialog(props: {
                   </option>
                 ))}
                 <option value="" disabled>
-                  ---suplier---
+                  ---supplier---
                 </option>
                 {walletOptions.dispatch.map((w) => (
                   <option key={w.key} value={w.key}>

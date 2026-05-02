@@ -33,6 +33,7 @@ import {
 import { useRouter } from "next/navigation";
 import { setDemoSession } from "@/lib/auth/demo";
 import { ensureAdminStore, validateDemoLogin } from "@/lib/admin/usersStore";
+import { clearLegacyDriverWalletLocalStorage } from "@/lib/fleet/driverWalletStore";
 import type { UserRole } from "@/lib/admin/usersStore";
 
 type ForgotStep = "identify" | "otp" | "reset";
@@ -58,6 +59,10 @@ export default function LoginPage() {
   const [remember, setRemember] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    clearLegacyDriverWalletLocalStorage();
+  }, []);
 
   React.useEffect(() => {
     // Avoid initializing Firebase during server prerender.

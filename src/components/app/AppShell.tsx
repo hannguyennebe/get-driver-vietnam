@@ -6,6 +6,7 @@ import Link from "next/link";
 import { clearDemoSession, getDemoSession } from "@/lib/auth/demo";
 import { Button } from "@/components/ui/button";
 import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
+import { clearLegacyDriverWalletLocalStorage } from "@/lib/fleet/driverWalletStore";
 import {
   CalendarDays,
   ChevronDown,
@@ -65,6 +66,10 @@ export function AppShell({
     } catch {
       setLogoDataUrl("");
     }
+  }, []);
+
+  React.useEffect(() => {
+    clearLegacyDriverWalletLocalStorage();
   }, []);
 
   React.useEffect(() => {
