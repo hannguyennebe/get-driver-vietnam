@@ -208,7 +208,7 @@ export default function FinanceSoThuChiPage() {
 
   return (
     <AppShell>
-      <div className="px-6 pb-10">
+      <div className="min-w-0 px-6 pb-10">
         <div className="pt-6">
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Sổ thu chi</h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
