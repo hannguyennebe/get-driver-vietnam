@@ -22,6 +22,9 @@ import type { OtherExpense } from "@/lib/finance/otherExpensesStore";
 import { subscribeOtherExpenses } from "@/lib/finance/otherExpensesFirestore";
 import type { DriverAdvance } from "@/lib/finance/driverAdvancesStore";
 import { subscribeDriverAdvances } from "@/lib/finance/driverAdvancesFirestore";
+import type { DriverWallet } from "@/lib/fleet/driverWalletStore";
+import { subscribeDriverWallets } from "@/lib/fleet/driverWalletsFirestore";
+import { CASH_FUND_CURRENCY_OPTIONS } from "@/components/finance/paymentConfirmTypes";
 
 type CashflowType = "Thu" | "Chi";
 
@@ -67,6 +70,7 @@ export default function FinanceSoThuChiPage() {
     expectedVnd: 0,
   });
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
+  const [driverWallets, setDriverWallets] = React.useState<DriverWallet[]>([]);
 
   const load = React.useCallback(() => {
     const pi = getPaymentInfo();
@@ -155,6 +159,7 @@ export default function FinanceSoThuChiPage() {
     const unsubOp = subscribeOperatingExpenses(setOperatingExpenses);
     const unsubOe = subscribeOtherExpenses(setOtherExpenses);
     const unsubAdv = subscribeDriverAdvances(setDriverAdvances);
+    const unsubWallets = subscribeDriverWallets(setDriverWallets);
     return () => {
       unsubR();
       unsubCb();
@@ -164,6 +169,7 @@ export default function FinanceSoThuChiPage() {
       unsubOp();
       unsubOe();
       unsubAdv();
+      unsubWallets();
     };
   }, [load]);
 
@@ -209,17 +215,8 @@ export default function FinanceSoThuChiPage() {
             Nhật ký thu/chi theo giao dịch đã thực hiện (thực tế).
           </p>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <TopAccountCard
-              title="Tiền Mặt"
-              meta={[
-                { label: "Loại Tiền", value: listCurrencies(balances.cash) },
-                {
-                  label: "Số dư",
-                  value: formatBalances(balances.cash),
-                },
-              ]}
-            />
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <CashFundCard cash={balances.cash} />
             <TopAccountCard
               title="Tài khoản VAT - VND"
               meta={[
@@ -259,6 +256,7 @@ export default function FinanceSoThuChiPage() {
                 },
               ]}
             />
+            <DriverWalletsOverviewCard wallets={driverWallets} />
           </div>
 
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
@@ -418,25 +416,6 @@ function tripKey(dateDmy: string, timeHm: string) {
   return (((y * 100 + m) * 100 + d) * 100 + h) * 100 + n;
 }
 
-function formatBalances(balances: Record<string, number> | undefined) {
-  const b = balances ?? {};
-  const rows: Array<{ cur: string; amt: number }> = [];
-  rows.push({ cur: "VND", amt: Number(b["VND"] ?? 0) || 0 });
-  for (const [curRaw, amtRaw] of Object.entries(b)) {
-    const cur = String(curRaw || "").trim().toUpperCase();
-    if (!cur || cur === "VND") continue;
-    const amt = Number(amtRaw ?? 0) || 0;
-    rows.push({ cur, amt });
-  }
-  return rows
-    .map((x) =>
-      x.cur === "VND"
-        ? `${x.amt.toLocaleString("vi-VN")} VND`
-        : `${x.amt.toLocaleString("en-US")} ${x.cur}`,
-    )
-    .join(" • ");
-}
-
 function formatAmount(amount: number, currency: string) {
   const cur = String(currency || "VND").trim().toUpperCase() || "VND";
   const n = Number(amount ?? 0) || 0;
@@ -444,15 +423,113 @@ function formatAmount(amount: number, currency: string) {
   return `${n.toLocaleString("en-US")} ${cur}`;
 }
 
-function listCurrencies(balances: Record<string, number> | undefined) {
-  const b = balances ?? {};
-  const set = new Set<string>();
-  set.add("VND");
+function expandCashRows(cash: Record<string, number>): Array<{ cur: string; amt: number }> {
+  const b = cash ?? {};
+  const out: Array<{ cur: string; amt: number }> = [];
+  const seen = new Set<string>();
+  for (const cur of CASH_FUND_CURRENCY_OPTIONS) {
+    seen.add(cur);
+    out.push({ cur, amt: Number(b[cur] ?? 0) || 0 });
+  }
   for (const k of Object.keys(b)) {
     const cur = String(k || "").trim().toUpperCase();
-    if (cur) set.add(cur);
+    if (!cur || seen.has(cur)) continue;
+    seen.add(cur);
+    out.push({ cur, amt: Number(b[cur] ?? 0) || 0 });
   }
-  return Array.from(set.values()).join(", ");
+  return out;
+}
+
+function CashFundCard({ cash }: { cash: Record<string, number> }) {
+  const rows = expandCashRows(cash);
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Tiền Mặt</div>
+      <div className="mt-3 grid grid-cols-2 gap-x-3 border-b border-zinc-200 pb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+        <span>Loại tiền</span>
+        <span className="text-right">Số dư</span>
+      </div>
+      <div className="mt-1 space-y-1">
+        {rows.map((r) => (
+          <div key={r.cur} className="grid grid-cols-2 gap-x-3 text-xs">
+            <span className="font-medium text-zinc-800 dark:text-zinc-200">{r.cur}</span>
+            <span className="text-right tabular-nums font-medium text-zinc-900 dark:text-zinc-50">
+              {formatAmount(r.amt, r.cur)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function positiveWalletBalanceLines(balances: Record<string, number> | undefined) {
+  const b = balances ?? {};
+  const rows: Array<{ cur: string; amt: number }> = [];
+  for (const [k, raw] of Object.entries(b)) {
+    const cur = String(k || "").trim().toUpperCase();
+    if (!cur) continue;
+    const amt = Number(raw ?? 0) || 0;
+    if (amt > 0) rows.push({ cur, amt });
+  }
+  rows.sort((a, b) => {
+    if (a.cur === "VND") return -1;
+    if (b.cur === "VND") return 1;
+    return a.cur.localeCompare(b.cur);
+  });
+  return rows;
+}
+
+function DriverWalletsOverviewCard({ wallets }: { wallets: DriverWallet[] }) {
+  const withBalance = wallets.filter((w) => positiveWalletBalanceLines(w.balances).length > 0);
+  withBalance.sort((a, b) => {
+    const ra = a.source === "roster" ? 0 : 1;
+    const rb = b.source === "roster" ? 0 : 1;
+    if (ra !== rb) return ra - rb;
+    return String(a.walletName || "").localeCompare(String(b.walletName || ""));
+  });
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Ví Tài Xế</div>
+      <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+        Công ty &amp; ngoài — ví có số dư &gt; 0
+      </p>
+      <div className="mt-3 max-h-52 space-y-3 overflow-y-auto pr-1">
+        {withBalance.length === 0 ? (
+          <div className="text-xs text-zinc-400 dark:text-zinc-500">Chưa có ví với số dư dương.</div>
+        ) : (
+          withBalance.map((w) => {
+            const lines = positiveWalletBalanceLines(w.balances);
+            return (
+              <div key={w.key} className="border-t border-zinc-100 pt-3 first:border-t-0 first:pt-0 dark:border-zinc-800">
+                <div className="flex flex-wrap items-center gap-x-2 text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+                  <span>
+                    {w.walletName} • {w.driverName}
+                  </span>
+                  <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                    {w.source === "roster" ? "Công ty" : "Ngoài"}
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+                  <span className="font-medium uppercase text-zinc-500 dark:text-zinc-400">Loại tiền</span>
+                  <span className="text-right font-medium uppercase text-zinc-500 dark:text-zinc-400">Số dư</span>
+                  {lines.map((ln) => (
+                    <React.Fragment key={`${w.key}-${ln.cur}`}>
+                      <span className="text-zinc-700 dark:text-zinc-300">{ln.cur}</span>
+                      <span className="text-right tabular-nums font-medium text-zinc-900 dark:text-zinc-50">
+                        {formatAmount(ln.amt, ln.cur)}
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TopAccountCard({
