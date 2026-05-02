@@ -172,7 +172,15 @@ export default function DriversPage() {
   }, [reservations]);
 
   const internalCount = drivers.filter((d) => d.type === "internal").length;
-  const externalCount = drivers.filter((d) => d.type === "external").length;
+  /** Số tài xế ngoài = gom theo SĐT+biển từ booking điều ngoài (cùng logic với tab), không phải bản ghi `drivers.type === "external"`. */
+  const externalDispatchUniqueCount = React.useMemo(() => {
+    const byKey = new Set<string>();
+    for (const r of externalRows) {
+      if (r.driverName === "—" || r.driverPhone === "—" || r.plate === "—") continue;
+      byKey.add(`${normalizeDigits(r.driverPhone)}|${normalizePlate(r.plate)}`);
+    }
+    return byKey.size;
+  }, [externalRows]);
 
   const filtered = drivers
     .filter((d) => d.type === tab)
@@ -320,7 +328,7 @@ export default function DriversPage() {
               <User className="h-4 w-4" />
               Lái xe ngoài
               <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-                {externalCount}
+                {externalDispatchUniqueCount}
               </span>
             </button>
           </div>
