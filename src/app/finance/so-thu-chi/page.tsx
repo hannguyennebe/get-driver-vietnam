@@ -42,8 +42,6 @@ type CashflowRow = {
 export default function FinanceSoThuChiPage() {
   const [q, setQ] = React.useState("");
   const [tab, setTab] = React.useState<CashflowType>("Thu");
-  const [rows, setRows] = React.useState<CashflowRow[]>([]);
-  const [paymentInfo, setPaymentInfo] = React.useState<PaymentInfo | null>(null);
   const [cashbookEntries, setCashbookEntries] = React.useState<CashbookEntry[]>([]);
   const [apExpenses, setApExpenses] = React.useState<ExpenseInstance[]>([]);
   const [apPayments, setApPayments] = React.useState<PaymentTransaction[]>([]);
@@ -59,23 +57,12 @@ export default function FinanceSoThuChiPage() {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
   });
-  const [balances, setBalances] = React.useState({
-    cash: {} as Record<string, number>,
-    vatVnd: 0,
-    noVatVnd: 0,
-    usd: 0,
-  });
-  const [cashflowBoxes, setCashflowBoxes] = React.useState({
-    actualVnd: 0,
-    expectedVnd: 0,
-  });
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
   const [driverWallets, setDriverWallets] = React.useState<DriverWallet[]>([]);
 
-  const load = React.useCallback(() => {
+  /** Dẫn xuất chỉ đọc snapshot trong state — không ghi Firestore; tái tính khi dữ liệu đổi. */
+  const { paymentInfo, balances, cashflowBoxes, rows } = React.useMemo(() => {
     const pi = getPaymentInfo();
-    setPaymentInfo(pi);
-
     const entries = cashbookEntries;
     const cash: Record<string, number> = {};
     for (const e of entries) {
@@ -93,15 +80,14 @@ export default function FinanceSoThuChiPage() {
         .reduce((s, e) => s + (e.direction === "IN" ? e.amount : -e.amount), 0);
     };
 
-    setBalances({
+    const balancesNext = {
       cash,
       vatVnd: computeBalanceFrom("VAT_VND", "VND"),
       noVatVnd: computeBalanceFrom("NOVAT_VND", "VND"),
       usd: computeBalanceFrom("USD", "USD"),
-    });
+    };
 
-    // Cashflow summary blocks (VND)
-    const today = toIsoDate(new Date()); // realtime (local timezone)
+    const today = toIsoDate(new Date());
 
     const cashVnd = Number(cash["VND"] ?? 0) || 0;
     const fundVnd = cashVnd + computeBalanceFrom("VAT_VND", "VND") + computeBalanceFrom("NOVAT_VND", "VND");
@@ -113,12 +99,11 @@ export default function FinanceSoThuChiPage() {
       paidByExpense.set(p.expenseId, (paidByExpense.get(p.expenseId) ?? 0) + (p.amountVnd || 0));
     }
     const unpaid = expenses.filter((e) => e.status !== "Paid" && e.status !== "Cancelled");
-    const remaining = (e: any) => Math.max(0, (e.amountVnd || 0) - (paidByExpense.get(e.id) ?? 0));
-    // Total payables due by realtime date (overdue + due today)
+    const remaining = (e: ExpenseInstance) =>
+      Math.max(0, (e.amountVnd || 0) - (paidByExpense.get(e.id) ?? 0));
     const duePayablesVnd = unpaid
       .filter((e) => (e.dueDateISO || "") <= today)
       .reduce((s, e) => s + remaining(e), 0);
-    const allPayablesVnd = unpaid.reduce((s, e) => s + remaining(e), 0);
 
     const taById = new Map(travelAgents.map((t) => [t.id, t] as const));
 
@@ -130,10 +115,10 @@ export default function FinanceSoThuChiPage() {
       })
       .reduce((s, r) => s + (r.amount || 0), 0);
 
-    setCashflowBoxes({
+    const cashflowBoxesNext = {
       actualVnd: fundVnd - duePayablesVnd,
       expectedVnd: fundVnd + dueReceivablesVnd - duePayablesVnd,
-    });
+    };
 
     const out: CashflowRow[] = entries.map((e) => ({
       id: e.id,
@@ -146,11 +131,17 @@ export default function FinanceSoThuChiPage() {
       source: sourceLabel(e.sourceId, pi),
     }));
     out.sort((a, b) => tripKey(b.date, b.time) - tripKey(a.date, a.time));
-    setRows(out);
+
+    return {
+      paymentInfo: pi,
+      balances: balancesNext,
+      cashflowBoxes: cashflowBoxesNext,
+      rows: out,
+    };
   }, [reservations, cashbookEntries, apExpenses, apPayments, travelAgents]);
 
+  /** Đăng ký realtime một lần; snapshot → setState, không hủy/tạo lại listener khi dữ liệu đổi. */
   React.useEffect(() => {
-    load();
     const unsubR = subscribeActiveReservations(setReservations);
     const unsubCb = subscribeCashbookEntries(setCashbookEntries);
     const unsubApE = subscribeApExpenses(setApExpenses);
@@ -171,7 +162,7 @@ export default function FinanceSoThuChiPage() {
       unsubAdv();
       unsubWallets();
     };
-  }, [load]);
+  }, []);
 
   const filtered = React.useMemo(() => {
     const needle = q.trim().toLowerCase();
