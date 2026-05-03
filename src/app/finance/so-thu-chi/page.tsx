@@ -89,8 +89,19 @@ export default function FinanceSoThuChiPage() {
 
     const today = toIsoDate(new Date());
 
-    const cashVnd = Number(cash["VND"] ?? 0) || 0;
-    const fundVnd = cashVnd + computeBalanceFrom("VAT_VND", "VND") + computeBalanceFrom("NOVAT_VND", "VND");
+    /** Tiền mặt: số dư VND trên nguồn CASH. */
+    const cashVndOnly = Number(cash["VND"] ?? 0) || 0;
+
+    /** Ví tài xế: tổng số dư VND. */
+    const walletsVndTotal =
+      driverWallets.reduce((s, w) => s + (Number(w.balances?.VND ?? 0) || 0), 0) || 0;
+
+    /** Tài khoản ngân hàng có đơn vị VND (VAT + No VAT) — số dư theo sổ. */
+    const bankVndTotal =
+      computeBalanceFrom("VAT_VND", "VND") + computeBalanceFrom("NOVAT_VND", "VND");
+
+    /** Quỹ thanh khoản VND: tiền mặt + ví + TK NH VND. */
+    const liquidBaseVnd = cashVndOnly + walletsVndTotal + bankVndTotal;
 
     const expenses = apExpenses;
     const payments = apPayments;
@@ -101,23 +112,40 @@ export default function FinanceSoThuChiPage() {
     const unpaid = expenses.filter((e) => e.status !== "Paid" && e.status !== "Cancelled");
     const remaining = (e: ExpenseInstance) =>
       Math.max(0, (e.amountVnd || 0) - (paidByExpense.get(e.id) ?? 0));
+    /** Chi đến hạn + quá hạn: hạn TT ≤ hôm nay, chưa trả đủ. */
     const duePayablesVnd = unpaid
       .filter((e) => (e.dueDateISO || "") <= today)
       .reduce((s, e) => s + remaining(e), 0);
 
     const taById = new Map(travelAgents.map((t) => [t.id, t] as const));
 
-    const dueReceivablesVnd = reservations
-      .filter((r) => r.currency === "VND" && r.paymentType !== "Ví tài xế")
-      .filter((r) => {
-        const due = reservationDueIso(r, taById);
-        return due ? due <= today : false;
-      })
-      .reduce((s, r) => s + (r.amount || 0), 0);
+    /** Đã ghi nhận thu/quyết toán booking trên sổ (AR), VND — dùng để tính còn phải thu. */
+    const arSettledVndByBooking = new Map<string, number>();
+    for (const e of entries) {
+      if (String(e.referenceType || "") !== "AR") continue;
+      const code = String(e.referenceId || "").trim();
+      if (!code) continue;
+      if (String(e.currency || "VND").trim().toUpperCase() !== "VND") continue;
+      if (e.direction !== "IN" && e.direction !== "OUT") continue;
+      const amt = Number(e.amount ?? 0) || 0;
+      arSettledVndByBooking.set(code, (arSettledVndByBooking.get(code) ?? 0) + amt);
+    }
+
+    /** Khoản thu đến hạn / quá hạn chưa thu đủ (theo ngày hiện tại hệ thống). */
+    let dueReceivablesRemainingVnd = 0;
+    for (const r of reservations) {
+      if (r.paymentType !== "Phải Thu" && r.paymentType !== "Công Nợ") continue;
+      if (String(r.currency || "VND").trim().toUpperCase() !== "VND") continue;
+      const due = reservationDueIso(r, taById);
+      if (!due || due > today) continue;
+      const total = Number(r.amount ?? 0) || 0;
+      const settled = arSettledVndByBooking.get(r.code) ?? 0;
+      dueReceivablesRemainingVnd += Math.max(0, total - settled);
+    }
 
     const cashflowBoxesNext = {
-      actualVnd: fundVnd - duePayablesVnd,
-      expectedVnd: fundVnd + dueReceivablesVnd - duePayablesVnd,
+      actualVnd: liquidBaseVnd - duePayablesVnd,
+      expectedVnd: liquidBaseVnd + dueReceivablesRemainingVnd - duePayablesVnd,
     };
 
     const out: CashflowRow[] = entries.map((e) => ({
@@ -138,7 +166,7 @@ export default function FinanceSoThuChiPage() {
       cashflowBoxes: cashflowBoxesNext,
       rows: out,
     };
-  }, [reservations, cashbookEntries, apExpenses, apPayments, travelAgents]);
+  }, [reservations, cashbookEntries, apExpenses, apPayments, travelAgents, driverWallets]);
 
   /** Đăng ký realtime một lần; snapshot → setState, không hủy/tạo lại listener khi dữ liệu đổi. */
   React.useEffect(() => {
@@ -180,21 +208,37 @@ export default function FinanceSoThuChiPage() {
     [filtered],
   );
 
+  /** Doanh thu: Thành tiền booking theo ngày đi trong tháng (VND). */
+  const revenueTripMonth = React.useMemo(() => {
+    const y = monthSel.year;
+    const m = monthSel.month;
+    let phaiThuVnd = 0;
+    let congNoVnd = 0;
+    for (const r of reservations) {
+      if (!bookingTripDateInMonth(r.date, y, m)) continue;
+      const cur = String(r.currency || "VND").trim().toUpperCase() || "VND";
+      if (cur !== "VND") continue;
+      const amt = Number(r.amount ?? 0) || 0;
+      if (r.paymentType === "Phải Thu") phaiThuVnd += amt;
+      else if (r.paymentType === "Công Nợ") congNoVnd += amt;
+    }
+    return {
+      phaiThuVnd,
+      congNoVnd,
+      totalVnd: phaiThuVnd + congNoVnd,
+    };
+  }, [reservations, monthSel.year, monthSel.month]);
+
   const monthSummary = React.useMemo(() => {
     const y = monthSel.year;
     const m = monthSel.month;
     const key = `${String(m).padStart(2, "0")}/${y}`;
-    const inVnd = rows
-      .filter((r) => r.currency === "VND")
-      .filter((r) => (r.date || "").endsWith(key))
-      .filter((r) => r.type === "Thu")
-      .reduce((s, r) => s + (r.amount || 0), 0);
     const outVnd = rows
       .filter((r) => r.currency === "VND")
       .filter((r) => (r.date || "").endsWith(key))
       .filter((r) => r.type === "Chi")
       .reduce((s, r) => s + (r.amount || 0), 0);
-    return { inVnd, outVnd };
+    return { outVnd };
   }, [rows, monthSel.year, monthSel.month]);
 
   return (
@@ -259,27 +303,26 @@ export default function FinanceSoThuChiPage() {
             <CashflowSummaryCard
               tone="actual"
               title="Dòng tiền thực tế"
-              subtitle="Quỹ (VND) - Tổng khoản chi đến hạn"
+              subtitle="Tiền mặt VND + Ví VND + TK NH VND − Chi đến hạn (kể cả quá hạn)"
               valueVnd={cashflowBoxes.actualVnd}
             />
             <CashflowSummaryCard
               tone="expected"
               title="Dòng tiền dự kiến"
-              subtitle="Quỹ (VND) + Khoản thu đến hạn + Công nợ đến hạn - Khoản chi đến hạn"
+              subtitle="Tiền mặt VND + Ví VND + TK NH VND + Thu đến hạn còn lại − Phải chi đến hạn"
               valueVnd={cashflowBoxes.expectedVnd}
             />
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <MonthKpiCard
-              title="Doanh thu"
-              value={formatCompactVnd(monthSummary.inVnd)}
-              subtitle={`Theo kỳ thực hiện (${String(monthSel.month).padStart(2, "0")}/${monthSel.year})`}
+            <DoanhThuTripMonthCard
+              totalVnd={revenueTripMonth.totalVnd}
+              phaiThuVnd={revenueTripMonth.phaiThuVnd}
+              congNoVnd={revenueTripMonth.congNoVnd}
               month={monthSel.month}
               year={monthSel.year}
               onMonthChange={(month) => setMonthSel((s) => ({ ...s, month }))}
               onYearChange={(year) => setMonthSel((s) => ({ ...s, year }))}
-              icon={<span className="text-[#0B79B8]">↗</span>}
             />
             <MonthKpiCard
               title="Chi phí"
@@ -310,14 +353,7 @@ export default function FinanceSoThuChiPage() {
           </div>
 
           <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="w-full max-w-md">
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Tìm theo nội dung, ngày, nguồn..."
-              />
-            </div>
-            <div className="inline-flex rounded-lg border border-zinc-200 bg-white p-1 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="inline-flex shrink-0 rounded-lg border border-zinc-200 bg-white p-1 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
               <Button
                 type="button"
                 variant="secondary"
@@ -326,7 +362,7 @@ export default function FinanceSoThuChiPage() {
                 }`}
                 onClick={() => setTab("Thu")}
               >
-                Thu
+                Thực Thu
               </Button>
               <Button
                 type="button"
@@ -336,13 +372,20 @@ export default function FinanceSoThuChiPage() {
                 }`}
                 onClick={() => setTab("Chi")}
               >
-                Chi
+                Thực Chi
               </Button>
+            </div>
+            <div className="w-full max-w-md md:ml-auto">
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Tìm theo nội dung, ngày, nguồn..."
+              />
             </div>
           </div>
 
           <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
-            Tổng {tab.toLowerCase()}:{" "}
+            Tổng {tab === "Thu" ? "Thực Thu" : "Thực Chi"}:{" "}
             <span className="font-semibold text-zinc-900 dark:text-zinc-50">
               {sum.toLocaleString("vi-VN")} VND
             </span>
@@ -602,6 +645,109 @@ function formatCompactVnd(n: number) {
   if (Math.abs(v) >= 1_000_000) return `${Math.round(v / 1_000_000)}M`;
   if (Math.abs(v) >= 1_000) return `${Math.round(v / 1_000)}K`;
   return String(v);
+}
+
+/** Ngày đi booking dạng dd/mm/yyyy thuộc tháng/year. */
+function bookingTripDateInMonth(dateDmy: string, year: number, month: number): boolean {
+  const parts = String(dateDmy || "")
+    .trim()
+    .split("/")
+    .map((x) => Number(x));
+  if (parts.length < 3 || parts.some((x) => !Number.isFinite(x))) return false;
+  const [, mm, yyyy] = parts;
+  return yyyy === year && mm === month;
+}
+
+function DoanhThuTripMonthCard({
+  totalVnd,
+  phaiThuVnd,
+  congNoVnd,
+  month,
+  year,
+  onMonthChange,
+  onYearChange,
+}: {
+  totalVnd: number;
+  phaiThuVnd: number;
+  congNoVnd: number;
+  month: number;
+  year: number;
+  onMonthChange: (m: number) => void;
+  onYearChange: (y: number) => void;
+}) {
+  const years = React.useMemo(() => {
+    const now = new Date().getFullYear();
+    return [now - 1, now, now + 1];
+  }, []);
+  const months = React.useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-sm text-zinc-500 dark:text-zinc-400">Doanh thu</div>
+          <div className="mt-2 text-3xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
+            {formatCompactVnd(totalVnd)}
+          </div>
+          <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Thành tiền (VND) — ngày đi trong{" "}
+            <span className="font-medium">
+              tháng {String(month).padStart(2, "0")}/{year}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3 shrink-0">
+          <div className="flex flex-col items-end gap-2">
+            <select
+              className="h-8 rounded-md border border-zinc-200 bg-white px-2 text-xs outline-none dark:border-zinc-800 dark:bg-zinc-950"
+              value={year}
+              onChange={(e) => onYearChange(Number(e.target.value))}
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-8 rounded-md border border-zinc-200 bg-white px-2 text-xs outline-none dark:border-zinc-800 dark:bg-zinc-950"
+              value={month}
+              onChange={(e) => onMonthChange(Number(e.target.value))}
+            >
+              {months.map((m) => (
+                <option key={m} value={m}>
+                  Tháng {m}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-100 text-lg dark:bg-zinc-900">
+            <span className="text-[#0B79B8]">↗</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-2 border-t border-zinc-100 pt-4 text-sm dark:border-zinc-800">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-zinc-600 dark:text-zinc-300">Các khoản thu ngay (Phải Thu)</span>
+          <span className="shrink-0 tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
+            {Math.round(phaiThuVnd).toLocaleString("vi-VN")} VND
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-zinc-600 dark:text-zinc-300">Các khoản công nợ</span>
+          <span className="shrink-0 tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
+            {Math.round(congNoVnd).toLocaleString("vi-VN")} VND
+          </span>
+        </div>
+        <p className="pt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+          Booking thanh toán Ví tài xế không vào hai khoản trên.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function MonthKpiCard({
