@@ -208,24 +208,31 @@ export default function FinanceSoThuChiPage() {
     [filtered],
   );
 
-  /** Doanh thu: Thành tiền booking theo ngày đi trong tháng (VND). */
+  /** Doanh thu: tất cả booking có ngày đi trong tháng — cộng thành tiền theo loại tiền (không liên quan thanh toán thực tế). Chi tiết hai dòng: điều khoản Phải Thu / Công nợ trên booking. */
   const revenueTripMonth = React.useMemo(() => {
     const y = monthSel.year;
     const m = monthSel.month;
-    let phaiThuVnd = 0;
-    let congNoVnd = 0;
+    const totalByCurrency: Record<string, number> = {};
+    const phaiThuByCurrency: Record<string, number> = {};
+    const congNoByCurrency: Record<string, number> = {};
+
+    const bump = (map: Record<string, number>, cur: string, amt: number) => {
+      map[cur] = (map[cur] ?? 0) + amt;
+    };
+
     for (const r of reservations) {
       if (!bookingTripDateInMonth(r.date, y, m)) continue;
       const cur = String(r.currency || "VND").trim().toUpperCase() || "VND";
-      if (cur !== "VND") continue;
       const amt = Number(r.amount ?? 0) || 0;
-      if (r.paymentType === "Phải Thu") phaiThuVnd += amt;
-      else if (r.paymentType === "Công Nợ") congNoVnd += amt;
+      bump(totalByCurrency, cur, amt);
+      if (r.paymentType === "Phải Thu") bump(phaiThuByCurrency, cur, amt);
+      else if (r.paymentType === "Công Nợ") bump(congNoByCurrency, cur, amt);
     }
+
     return {
-      phaiThuVnd,
-      congNoVnd,
-      totalVnd: phaiThuVnd + congNoVnd,
+      totalByCurrency,
+      phaiThuByCurrency,
+      congNoByCurrency,
     };
   }, [reservations, monthSel.year, monthSel.month]);
 
@@ -316,9 +323,9 @@ export default function FinanceSoThuChiPage() {
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <DoanhThuTripMonthCard
-              totalVnd={revenueTripMonth.totalVnd}
-              phaiThuVnd={revenueTripMonth.phaiThuVnd}
-              congNoVnd={revenueTripMonth.congNoVnd}
+              totalByCurrency={revenueTripMonth.totalByCurrency}
+              phaiThuByCurrency={revenueTripMonth.phaiThuByCurrency}
+              congNoByCurrency={revenueTripMonth.congNoByCurrency}
               month={monthSel.month}
               year={monthSel.year}
               onMonthChange={(month) => setMonthSel((s) => ({ ...s, month }))}
@@ -647,6 +654,51 @@ function formatCompactVnd(n: number) {
   return String(v);
 }
 
+const REV_CUR_ORDER = ["VND", "USD"];
+function sortedCurrencyAmountEntries(map: Record<string, number>): Array<{ cur: string; amt: number }> {
+  const out: Array<{ cur: string; amt: number }> = [];
+  for (const [k, v] of Object.entries(map || {})) {
+    const cur = String(k || "").trim().toUpperCase() || "VND";
+    const amt = Number(v ?? 0) || 0;
+    if (Math.abs(amt) < 1e-9) continue;
+    out.push({ cur, amt });
+  }
+  out.sort((a, b) => {
+    const ia = REV_CUR_ORDER.indexOf(a.cur);
+    const ib = REV_CUR_ORDER.indexOf(b.cur);
+    if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    return a.cur.localeCompare(b.cur);
+  });
+  return out;
+}
+
+/** Số lớn gọn (K/M/B) cho headline doanh thu; VND dùng formatCompactVnd. */
+function formatCompactAmount(n: number, cur: string) {
+  const c = String(cur || "VND").trim().toUpperCase() || "VND";
+  if (c === "VND") return formatCompactVnd(n);
+  const v = Math.abs(Number(n ?? 0) || 0);
+  if (v >= 1_000_000_000) return `${Math.round(v / 1_000_000_000)}B`;
+  if (v >= 1_000_000) return `${Math.round(v / 1_000_000)}M`;
+  if (v >= 1_000) return `${Math.round(v / 1_000)}K`;
+  return (Number(n ?? 0) || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function DoanhThuCurrencyStack({ map }: { map: Record<string, number> }) {
+  const rows = sortedCurrencyAmountEntries(map);
+  if (rows.length === 0) {
+    return <span className="tabular-nums text-zinc-400 dark:text-zinc-500">—</span>;
+  }
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      {rows.map(({ cur, amt }) => (
+        <span key={cur} className="tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
+          {formatAmount(amt, cur)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** Ngày đi booking dạng dd/mm/yyyy thuộc tháng/year. */
 function bookingTripDateInMonth(dateDmy: string, year: number, month: number): boolean {
   const parts = String(dateDmy || "")
@@ -659,17 +711,17 @@ function bookingTripDateInMonth(dateDmy: string, year: number, month: number): b
 }
 
 function DoanhThuTripMonthCard({
-  totalVnd,
-  phaiThuVnd,
-  congNoVnd,
+  totalByCurrency,
+  phaiThuByCurrency,
+  congNoByCurrency,
   month,
   year,
   onMonthChange,
   onYearChange,
 }: {
-  totalVnd: number;
-  phaiThuVnd: number;
-  congNoVnd: number;
+  totalByCurrency: Record<string, number>;
+  phaiThuByCurrency: Record<string, number>;
+  congNoByCurrency: Record<string, number>;
   month: number;
   year: number;
   onMonthChange: (m: number) => void;
@@ -681,19 +733,33 @@ function DoanhThuTripMonthCard({
   }, []);
   const months = React.useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
 
+  const totalsHeadline = sortedCurrencyAmountEntries(totalByCurrency);
+
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-sm text-zinc-500 dark:text-zinc-400">Doanh thu</div>
-          <div className="mt-2 text-3xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
-            {formatCompactVnd(totalVnd)}
+          <div className="mt-2 space-y-1">
+            {totalsHeadline.length === 0 ? (
+              <div className="text-3xl font-semibold tabular-nums text-zinc-400 dark:text-zinc-500">0</div>
+            ) : (
+              totalsHeadline.map(({ cur, amt }) => (
+                <div key={cur} className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-3xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
+                    {formatCompactAmount(amt, cur)}
+                  </span>
+                  <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">{cur}</span>
+                </div>
+              ))
+            )}
           </div>
           <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Thành tiền (VND) — ngày đi trong{" "}
+            Tổng thành tiền booking — ngày đi trong{" "}
             <span className="font-medium">
               tháng {String(month).padStart(2, "0")}/{year}
             </span>
+            . Báo cáo doanh thu (không phải dòng tiền). Hai dòng dưới là điều khoản trên booking.
           </div>
         </div>
 
@@ -730,20 +796,16 @@ function DoanhThuTripMonthCard({
       </div>
 
       <div className="mt-4 space-y-2 border-t border-zinc-100 pt-4 text-sm dark:border-zinc-800">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-zinc-600 dark:text-zinc-300">Các khoản thu ngay (Phải Thu)</span>
-          <span className="shrink-0 tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
-            {Math.round(phaiThuVnd).toLocaleString("vi-VN")} VND
-          </span>
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-zinc-600 dark:text-zinc-300">Các khoản thu ngay</span>
+          <DoanhThuCurrencyStack map={phaiThuByCurrency} />
         </div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
           <span className="text-zinc-600 dark:text-zinc-300">Các khoản công nợ</span>
-          <span className="shrink-0 tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
-            {Math.round(congNoVnd).toLocaleString("vi-VN")} VND
-          </span>
+          <DoanhThuCurrencyStack map={congNoByCurrency} />
         </div>
         <p className="pt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
-          Booking thanh toán Ví tài xế không vào hai khoản trên.
+          Số liệu lấy theo thành tiền và loại tiền trên booking (điều khoản Phải Thu / Công nợ). Tổng phía trên gồm mọi booking trong tháng.
         </p>
       </div>
     </div>

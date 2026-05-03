@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { getPaymentInfo } from "@/lib/admin/paymentStore";
 import type { DriverWallet } from "@/lib/fleet/driverWalletStore";
 import { subscribeDriverWallets } from "@/lib/fleet/driverWalletsFirestore";
-import { listCashbookEntries } from "@/lib/finance/cashbookStore";
+import type { CashbookEntry } from "@/lib/finance/cashbookStore";
+import { subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
 import {
   CASH_FUND_CURRENCY_OPTIONS,
   formatBalances,
@@ -62,6 +63,13 @@ export function PaymentConfirmDialogCore(props: PaymentConfirmDialogCoreProps) {
     const unsub = subscribeDriverWallets(setWallets);
     return () => unsub();
   }, []);
+
+  const [cashbookEntries, setCashbookEntries] = React.useState<CashbookEntry[]>([]);
+  React.useEffect(() => {
+    const unsub = subscribeCashbookEntries(setCashbookEntries);
+    return () => unsub();
+  }, []);
+
   const walletOptions = React.useMemo(() => {
     const roster = wallets.filter((w) => w.source === "roster");
     const dispatch = wallets.filter((w) => w.source === "dispatch");
@@ -72,8 +80,7 @@ export function PaymentConfirmDialogCore(props: PaymentConfirmDialogCoreProps) {
     return { roster, dispatch };
   }, [wallets]);
   const cashBalances = React.useMemo(() => {
-    if (typeof window === "undefined") return {} as Record<string, number>;
-    const rows = listCashbookEntries().filter((e) => e.sourceId === "CASH");
+    const rows = cashbookEntries.filter((e) => e.sourceId === "CASH");
     const m: Record<string, number> = {};
     for (const e of rows) {
       const cur = String(e.currency || "VND").trim().toUpperCase() || "VND";
@@ -81,7 +88,7 @@ export function PaymentConfirmDialogCore(props: PaymentConfirmDialogCoreProps) {
       m[cur] = (m[cur] ?? 0) + delta;
     }
     return m;
-  }, [props.open]);
+  }, [cashbookEntries]);
 
   React.useEffect(() => {
     if (!props.open) return;
