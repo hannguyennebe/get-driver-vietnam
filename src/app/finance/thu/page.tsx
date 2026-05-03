@@ -276,7 +276,7 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2">Hạn Thanh Toán</th>
                       <th className="px-3 py-2 text-right">Thu tiền</th>
                       <th className="px-3 py-2 text-center">
-                        <span className="block">Đã chi đủ</span>
+                        <span className="block">Đã thu đủ</span>
                         <span className="block text-[10px] font-normal text-zinc-500">Hoàn tác: Admin</span>
                       </th>
                     </tr>
@@ -327,7 +327,7 @@ export default function FinanceThuPage() {
                               }}
                               title={
                                 forcedPaid
-                                  ? "Đã đánh dấu đã chi đủ"
+                                  ? "Đã đánh dấu đã thu đủ"
                                   : remaining > 0
                                     ? `Còn lại: ${remaining.toLocaleString("vi-VN")} ${cur}`
                                     : "Đã thu đủ"
@@ -346,7 +346,7 @@ export default function FinanceThuPage() {
                                   setPaidFlags(next);
                                   writePaidFlags(next);
                                 }}
-                                title="Đánh dấu đã chi đủ (ẩn nút Thu tiền)"
+                                title="Đánh dấu đã thu đủ (ẩn nút Thu tiền)"
                               />
                             ) : (
                               <Button
@@ -354,10 +354,10 @@ export default function FinanceThuPage() {
                                 variant="secondary"
                                 className="h-9 rounded-lg border border-zinc-300 bg-white text-sm dark:border-zinc-600 dark:bg-zinc-950"
                                 disabled={!isAdmin}
-                                title={isAdmin ? "Hoàn tác: bỏ đánh dấu Đã chi đủ" : "Chỉ Admin mới hoàn tác được"}
+                                title={isAdmin ? "Hoàn tác: bỏ đánh dấu Đã thu đủ" : "Chỉ Admin mới hoàn tác được"}
                                 onClick={() => {
                                   if (!isAdmin) return;
-                                  if (!confirm("Bỏ đánh dấu Đã chi đủ cho dòng này?")) return;
+                                  if (!confirm("Bỏ đánh dấu Đã thu đủ cho dòng này?")) return;
                                   const next = { ...paidFlags };
                                   delete next[flagKey];
                                   setPaidFlags(next);
