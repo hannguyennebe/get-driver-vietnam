@@ -50,6 +50,8 @@ export default function DashboardPage() {
     kind: "reservation" | "calendar";
     customer: string;
     sales?: string;
+    /** Hiển thị/copy: Thứ ..., dd/mm/yyyy */
+    dateLabel: string;
     time: string;
     itinerary?: string;
     from: string;
@@ -124,23 +126,28 @@ export default function DashboardPage() {
 
       const reservationDay = active
         .filter((r) => dmyToIso(r.date) === viewDayIso)
-        .map((r) => ({
-          id: r.code,
-          kind: "reservation" as const,
-          customer: r.customerName,
-          sales: r.sales,
-          time: r.time,
-          itinerary: r.itinerary,
-          from: r.pickup,
-          to: r.dropoff,
-          vehicleType: r.vehicleType,
-          reservationStatus: r.status,
-          driverName: r.assignedDriver,
-          driverPhone: r.assignedDriverPhone,
-          vehiclePlate: r.assignedVehiclePlate,
-          note: r.note,
-          thuHoVnd: r.thuHoCurrency === "VND" ? r.thuHoAmount : 0,
-        }));
+        .map((r) => {
+          const iso = dmyToIso(r.date);
+          const dateLabel = iso ? vnDmyTitleFromIso(iso) : String(r.date || "—").trim() || "—";
+          return {
+            id: r.code,
+            kind: "reservation" as const,
+            customer: r.customerName,
+            sales: r.sales,
+            dateLabel,
+            time: r.time,
+            itinerary: r.itinerary,
+            from: r.pickup,
+            to: r.dropoff,
+            vehicleType: r.vehicleType,
+            reservationStatus: r.status,
+            driverName: r.assignedDriver,
+            driverPhone: r.assignedDriverPhone,
+            vehiclePlate: r.assignedVehiclePlate,
+            note: r.note,
+            thuHoVnd: r.thuHoCurrency === "VND" ? r.thuHoAmount : 0,
+          };
+        });
       const demoDay = manualTrips
         .filter((t) => t.date === viewDayIso && !cancelledCodes.has(t.id))
         .map((t) => ({
@@ -148,6 +155,7 @@ export default function DashboardPage() {
           kind: "calendar" as const,
           customer: t.customer,
           sales: "—",
+          dateLabel: vnDmyTitleFromIso(t.date),
           time: t.time,
           itinerary: undefined,
           from: t.from,
@@ -616,6 +624,7 @@ function ScheduleCard({
     kind: "reservation" | "calendar";
     customer: string;
     sales?: string;
+    dateLabel: string;
     time: string;
     itinerary?: string;
     from: string;
@@ -639,6 +648,7 @@ function ScheduleCard({
 
   const copyDriverInfo = async () => {
     const text =
+      `📅 Ngày đi: ${trip.dateLabel}\n` +
       `👨‍✈️Driver : ${trip.driverName || "—"}\n` +
       `📞Phone: ${trip.driverPhone || "—"}\n` +
       `🚘CAR    : ${trip.vehicleType || "—"}\n` +
@@ -657,6 +667,7 @@ function ScheduleCard({
       `RESERVATION ${trip.id}`,
       `Khách hàng: ${trip.customer || "—"}`,
       `Sales: ${trip.sales || "—"}`,
+      `Ngày đi: ${trip.dateLabel}`,
       `Giờ đón: ${trip.time || "—"}`,
       trip.itinerary ? `Hành trình: ${trip.itinerary}` : null,
       `Đón: ${trip.from || "—"}`,
