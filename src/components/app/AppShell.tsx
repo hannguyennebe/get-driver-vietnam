@@ -104,7 +104,7 @@ export function AppShell({
   if (!username) return null;
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 bg-zinc-50 dark:bg-black">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col bg-zinc-50 dark:bg-black md:flex-row">
       {mobileNavOpen ? (
         <button
           type="button"
@@ -114,12 +114,40 @@ export function AppShell({
         />
       ) : null}
 
+      <main className="relative z-0 order-1 flex min-h-0 w-full min-w-0 max-w-[100vw] flex-1 flex-col overflow-x-auto overflow-y-auto md:order-2">
+        <div className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-zinc-200/90 bg-zinc-50/95 px-3 backdrop-blur-sm dark:border-zinc-800 dark:bg-black/90 md:justify-end md:border-b-0 md:bg-transparent md:px-6 md:backdrop-blur-none">
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-sm md:hidden dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+            aria-label="Mở menu"
+            aria-expanded={mobileNavOpen}
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 md:hidden dark:text-zinc-50">
+            Get Driver Vietnam
+          </div>
+          <div className="inline-flex max-w-[min(100%,14rem)] shrink-0 items-center gap-2 rounded-full border border-zinc-200 bg-white px-2 py-1 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2E7AB0] text-xs font-semibold text-white">
+              {initials(username)}
+            </div>
+            <div className="max-w-[42vw] min-w-0 truncate pr-2 text-xs font-medium text-zinc-700 sm:max-w-none sm:text-sm dark:text-zinc-200">
+              {username}
+            </div>
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">{children}</div>
+      </main>
+
       <aside
         className={[
           "relative z-40 flex h-full min-h-0 shrink-0 flex-col bg-[#2E7AB0] text-white",
           "fixed inset-y-0 left-0 w-[min(88vw,300px)] max-w-[85vw] shadow-[4px_0_24px_rgba(0,0,0,0.15)] transition-transform duration-200 ease-out",
           "md:relative md:inset-auto md:z-20 md:w-[260px] md:max-w-none md:translate-x-0 md:shadow-none",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+          "order-2 md:order-1",
         ].join(" ")}
       >
         <div className="flex h-14 items-center gap-2 px-4">
@@ -347,33 +375,6 @@ export function AppShell({
           </Button>
         </div>
       </aside>
-
-      <main className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-auto">
-        <div className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-zinc-200/90 bg-zinc-50/95 px-3 backdrop-blur-sm dark:border-zinc-800 dark:bg-black/90 md:justify-end md:border-b-0 md:bg-transparent md:px-6 md:backdrop-blur-none">
-          <button
-            type="button"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-800 shadow-sm md:hidden dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-            aria-label="Mở menu"
-            aria-expanded={mobileNavOpen}
-            onClick={() => setMobileNavOpen(true)}
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <div className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-900 md:hidden dark:text-zinc-50">
-            Get Driver Vietnam
-          </div>
-          <div className="inline-flex max-w-[min(100%,14rem)] shrink-0 items-center gap-2 rounded-full border border-zinc-200 bg-white px-2 py-1 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2E7AB0] text-xs font-semibold text-white">
-              {initials(username)}
-            </div>
-            <div className="max-w-[42vw] min-w-0 truncate pr-2 text-xs font-medium text-zinc-700 sm:max-w-none sm:text-sm dark:text-zinc-200">
-              {username}
-            </div>
-          </div>
-        </div>
-
-        <div className="min-w-0 flex-1">{children}</div>
-      </main>
     </div>
   );
 }
