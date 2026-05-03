@@ -6,8 +6,8 @@ export type ThuHoPaymentMethod = "TM" | "CK";
 export type ThuHoPayment = {
   id: string;
   /**
-   * Mã phiếu thu: GDV-REV-MM-XXXXX (MM = tháng lúc bấm Thu tiền; XXXXX tăng dần trong tháng theo năm).
-   * Bản cũ có thể thiếu.
+   * Mã phiếu thu: GDV-REV-YYMM-XXXXX (YYMM = năm 2 số + tháng lúc bấm Thu tiền; XXXXX tăng trong tháng đó).
+   * Bản cũ có thể thiếu hoặc dùng định dạng trước khi đổi.
    */
   receiptCode?: string;
   /** Mã booking (Reservation.code) mà khoản thu hộ thuộc về. */

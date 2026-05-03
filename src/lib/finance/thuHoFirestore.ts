@@ -19,14 +19,15 @@ const COL = "thuHoPayments";
 const REV_COUNTER_COL = "thuHoRevCounters";
 
 /**
- * GDV-REV-MM-XXXXX — chỉ được gọi từ {@link addThuHoPaymentFs} (màn Báo cáo Thu Hộ).
- * MM = tháng lúc ghi nhận; XXXXX tăng trong cùng tháng/năm.
+ * GDV-REV-YYMM-XXXXX — chỉ được gọi từ {@link addThuHoPaymentFs} (màn Báo cáo Thu Hộ).
+ * YYMM = năm (2 số) + tháng tại lúc ghi nhận; XXXXX tăng trong cùng tháng dương lịch (không trùng giữa các năm).
  */
 async function allocateThuHoReceiptCode(): Promise<string> {
   const db = getFirebaseDb();
   const now = new Date();
   const y = now.getFullYear();
   const mo = now.getMonth() + 1;
+  const yy = String(y % 100).padStart(2, "0");
   const mm = String(mo).padStart(2, "0");
   const periodKey = `${y}-${mm}`;
   const periodRef = doc(db, REV_COUNTER_COL, periodKey);
@@ -39,7 +40,7 @@ async function allocateThuHoReceiptCode(): Promise<string> {
       throw new Error("Hết dải mã thu hộ trong tháng (tối đa 99.999).");
     }
     tx.set(periodRef, { seq: next, updatedAt: serverTimestamp() }, { merge: true });
-    return `GDV-REV-${mm}-${String(next).padStart(5, "0")}`;
+    return `GDV-REV-${yy}${mm}-${String(next).padStart(5, "0")}`;
   });
 }
 
