@@ -654,7 +654,6 @@ function ScheduleCard({
     const text =
       `👨‍✈️Driver : ${trip.driverName || "—"}\n` +
       `📞Phone: ${trip.driverPhone || "—"}\n` +
-      `🚘CAR    : ${trip.vehicleType || "—"}\n` +
       `🚖CAR NUMBER : ${trip.vehiclePlate || "—"}\n` +
       `🚖 Car Info: ${trip.vehicleName?.trim() ? trip.vehicleName.trim() : "—"}`;
     try {
@@ -840,12 +839,6 @@ function ScheduleCard({
               <div className="text-zinc-500">📞Phone:</div>
               <div className="font-semibold text-zinc-900 dark:text-zinc-50">
                 {trip.driverPhone || "—"}
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-zinc-500">🚘CAR    :</div>
-              <div className="font-semibold text-zinc-900 dark:text-zinc-50">
-                {trip.vehicleType || "—"}
               </div>
             </div>
             <div className="flex items-center justify-between gap-3">

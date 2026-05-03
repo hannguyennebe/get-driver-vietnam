@@ -452,14 +452,19 @@ function DispatchInner() {
                         (x) => x.employeeCode === selectedDriverCode,
                       );
                       if (!d) return;
+                      const plNorm = selectedPlate.trim().toLowerCase();
+                      const selectedVehicle = vehicles.find(
+                        (v) => v.plate.trim().toLowerCase() === plNorm,
+                      );
+                      const companyVehicleName = selectedVehicle?.name?.trim() || null;
                       setConfirmBusy(true);
                       try {
                         await patchReservation(order.code, {
                           status: "Đã điều xe",
                           assignedDriver: d.name,
                           assignedDriverPhone: d.phone,
-                          assignedVehicleName: null,
-                          assignedVehiclePlate: selectedPlate,
+                          assignedVehicleName: companyVehicleName,
+                          assignedVehiclePlate: selectedPlate.trim(),
                           assignedExternalPriceVnd: null,
                           assignedSupplierId: null,
                           assignedSupplierPaymentType: null,
