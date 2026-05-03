@@ -29,6 +29,10 @@ export type PaymentConfirmDialogCoreProps = {
   defaultAmount?: number;
   onConfirm: (r: PaymentConfirmResult) => void | Promise<void>;
   walletVariant: "credit" | "debit";
+  /** Nhãn cho ô chọn quỹ / nguồn (vd: "Quỹ tiền ra" khi chi). */
+  fundSelectLabel?: string;
+  /** Nhãn nút xác nhận (vd: "Thanh toán"). */
+  confirmButtonLabel?: string;
 };
 
 export function PaymentConfirmDialogCore(props: PaymentConfirmDialogCoreProps) {
@@ -163,7 +167,7 @@ export function PaymentConfirmDialogCore(props: PaymentConfirmDialogCoreProps) {
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Nguồn tiền</div>
+            <div className="text-sm font-medium">{props.fundSelectLabel ?? "Nguồn tiền"}</div>
             <select
               className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-950"
               value={source}
@@ -316,7 +320,7 @@ export function PaymentConfirmDialogCore(props: PaymentConfirmDialogCoreProps) {
                 }
               }}
             >
-              {busy ? "Đang lưu…" : "Xác nhận"}
+              {busy ? "Đang lưu…" : props.confirmButtonLabel ?? "Xác nhận"}
             </Button>
           </div>
         </div>

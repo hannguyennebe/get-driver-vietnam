@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app/AppShell";
 import {
   type Currency,
@@ -20,7 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type PartnerPaymentTerms } from "@/lib/data/partnersStore";
 import type { ThuHoPayment } from "@/lib/finance/thuHoReportStore";
-import { PaymentConfirmDialogCredit } from "@/components/finance/PaymentConfirmDialog";
+import {
+  PaymentConfirmDialogCredit,
+  PaymentConfirmDialogDebit,
+} from "@/components/finance/PaymentConfirmDialog";
 import { ThuHoTransactionDialog } from "@/components/finance/ThuHoTransactionDialog";
 import type { CashbookEntry } from "@/lib/finance/cashbookStore";
 import { addCashbookEntryFs, subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
@@ -31,6 +35,7 @@ import { undoThuHoBookingFs } from "@/lib/finance/undoThuHoBooking";
 // PDF is generated server-side (avoid fontkit browser crashes)
 
 export default function FinanceThuPage() {
+  const router = useRouter();
   const payBtnClass =
     "h-10 rounded-xl px-5 font-semibold text-white shadow-sm " +
     "bg-gradient-to-b from-[#1AAAE1] to-[#0B79B8] " +
@@ -154,8 +159,8 @@ export default function FinanceThuPage() {
   const receivedByBookingCurrency = React.useMemo(() => {
     const m = new Map<string, Record<string, number>>();
     for (const e of cashbook) {
-      if (e.direction !== "IN") continue;
       if (e.referenceType !== "AR") continue;
+      if (e.direction !== "IN" && e.direction !== "OUT") continue;
       const code = String(e.referenceId || "");
       if (!code) continue;
       const cur = String(e.currency || "VND").trim().toUpperCase() || "VND";
@@ -168,7 +173,7 @@ export default function FinanceThuPage() {
 
   const receivedByAgentCurrency = React.useMemo(() => {
     const m = new Map<string, Record<string, number>>();
-    // Agent-level receipts
+    // Ghi nhận trực tiếp theo Travel Agent (thu từ đại lý)
     for (const e of cashbook) {
       if (e.referenceType !== "AR_AGENT") continue;
       if (e.direction !== "IN") continue;
@@ -182,7 +187,7 @@ export default function FinanceThuPage() {
     // Booking-level receipts rolled up to agent
     for (const e of cashbook) {
       if (e.referenceType !== "AR") continue;
-      if (e.direction !== "IN") continue;
+      if (e.direction !== "IN" && e.direction !== "OUT") continue;
       const code = String(e.referenceId || "");
       if (!code) continue;
       const booking = reservations.find((x) => x.code === code);
@@ -275,11 +280,15 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2 text-right">Thu Hộ</th>
                       <th className="px-3 py-2">Hạn Thanh Toán</th>
                       <th className="px-3 py-2 text-right">Thanh Toán</th>
-                      <th className="px-3 py-2 text-center">Đã Thu Đủ</th>
+                      <th className="px-3 py-2 text-center">
+                        <span className="block">Đã chi đủ</span>
+                        <span className="block text-[10px] font-normal text-zinc-500">Hoàn tác: Admin</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
                     {phaiThu.map((r) => {
+                      const isAdmin = getDemoSession()?.role === "Admin";
                       const ta = r.travelAgentId ? travelAgentById[r.travelAgentId] : undefined;
                       const cur = String(r.currency || "VND").trim().toUpperCase() || "VND";
                       const total = Number(r.amount ?? 0) || 0;
@@ -315,31 +324,54 @@ export default function FinanceThuPage() {
                           </td>
                           <td className="px-3 py-2 text-right">
                             <Button
-                              className={payBtnClass}
+                              className={`${payBtnClass} ${forcedPaid ? "opacity-40" : ""}`}
                               disabled={forcedPaid || remaining <= 0}
                               onClick={() => {
                                 setArBookingCode(r.code);
                                 setOpenArPay(true);
                               }}
                               title={
-                                remaining > 0
-                                  ? `Còn lại: ${remaining.toLocaleString("vi-VN")} ${cur}`
-                                  : "Đã thanh toán đủ"
+                                forcedPaid
+                                  ? "Đã đánh dấu đã chi đủ"
+                                  : remaining > 0
+                                    ? `Còn lại: ${remaining.toLocaleString("vi-VN")} ${cur}`
+                                    : "Đã thanh toán đủ"
                               }
                             >
                               Thanh Toán
                             </Button>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={forcedPaid}
-                              onChange={(e) => {
-                                const next = { ...paidFlags, [flagKey]: e.target.checked };
-                                setPaidFlags(next);
-                                writePaidFlags(next);
-                              }}
-                            />
+                            {!forcedPaid ? (
+                              <input
+                                type="checkbox"
+                                checked={Boolean(paidFlags[flagKey])}
+                                onChange={(e) => {
+                                  const next = { ...paidFlags, [flagKey]: e.target.checked };
+                                  setPaidFlags(next);
+                                  writePaidFlags(next);
+                                }}
+                                title="Đánh dấu đã chi đủ (ẩn nút Thanh toán)"
+                              />
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-9 rounded-lg border border-zinc-300 bg-white text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                                disabled={!isAdmin}
+                                title={isAdmin ? "Hoàn tác: bỏ đánh dấu Đã chi đủ" : "Chỉ Admin mới hoàn tác được"}
+                                onClick={() => {
+                                  if (!isAdmin) return;
+                                  if (!confirm("Bỏ đánh dấu Đã chi đủ cho dòng này?")) return;
+                                  const next = { ...paidFlags };
+                                  delete next[flagKey];
+                                  setPaidFlags(next);
+                                  writePaidFlags(next);
+                                }}
+                              >
+                                Hoàn Tác
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -409,11 +441,15 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2 text-right">Thu Hộ</th>
                       <th className="px-3 py-2 text-right">Phải Thu (Hoàn)</th>
                       <th className="px-3 py-2 text-right">Thanh toán</th>
-                      <th className="px-3 py-2 text-center">Đã Thu Đủ</th>
+                      <th className="px-3 py-2 text-center">
+                        <span className="block">Đã chi đủ</span>
+                        <span className="block text-[10px] font-normal text-zinc-500">Hoàn tác: Admin</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
                     {congNoByAgent.map((row, idx) => {
+                      const isAdminCn = getDemoSession()?.role === "Admin";
                       const ta = row.agentId !== "—" ? travelAgentById[row.agentId] : undefined;
                       const vnd = Math.round(row.totalByCurrency.VND ?? 0);
                       const usd = Math.round(row.totalByCurrency.USD ?? 0);
@@ -473,7 +509,7 @@ export default function FinanceThuPage() {
                           </td>
                           <td className="px-3 py-2 text-right">
                             <Button
-                              className={payBtnClass}
+                              className={`${payBtnClass} ${forcedPaid ? "opacity-40" : ""}`}
                               disabled={forcedPaid || !anyNet || row.agentId === "—"}
                               onClick={(e) => {
                                 e.preventDefault();
@@ -487,16 +523,39 @@ export default function FinanceThuPage() {
                             </Button>
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={forcedPaid}
-                              disabled={row.agentId === "—"}
-                              onChange={(e) => {
-                                const next = { ...paidFlags, [flagKey]: e.target.checked };
-                                setPaidFlags(next);
-                                writePaidFlags(next);
-                              }}
-                            />
+                            {!forcedPaid ? (
+                              <input
+                                type="checkbox"
+                                checked={Boolean(paidFlags[flagKey])}
+                                disabled={row.agentId === "—"}
+                                onChange={(e) => {
+                                  const next = { ...paidFlags, [flagKey]: e.target.checked };
+                                  setPaidFlags(next);
+                                  writePaidFlags(next);
+                                }}
+                                title="Đánh dấu đã chi đủ"
+                              />
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-9 rounded-lg border border-zinc-300 bg-white text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                                disabled={!isAdminCn || row.agentId === "—"}
+                                title={
+                                  isAdminCn ? "Hoàn tác: bỏ đánh dấu Đã chi đủ" : "Chỉ Admin mới hoàn tác được"
+                                }
+                                onClick={() => {
+                                  if (!isAdminCn) return;
+                                  if (!confirm("Bỏ đánh dấu Đã chi đủ cho agent này (tháng đã chọn)?")) return;
+                                  const next = { ...paidFlags };
+                                  delete next[flagKey];
+                                  setPaidFlags(next);
+                                  writePaidFlags(next);
+                                }}
+                              >
+                                Hoàn Tác
+                              </Button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -782,14 +841,19 @@ export default function FinanceThuPage() {
         }}
       />
 
-      <PaymentConfirmDialogCredit
+      <PaymentConfirmDialogDebit
         open={openArPay}
         onOpenChange={(v) => {
           setOpenArPay(v);
-          if (!v) setArBookingCode(null);
+          if (!v) {
+            setArBookingCode(null);
+            router.push("/finance/chi");
+          }
         }}
-        title="Thanh toán Booking"
-        description="Ghi nhận thu tiền thực tế vào Sổ thu chi."
+        title="Thanh toán"
+        description="Chọn quỹ tiền ra — giao dịch chi tiền; áp dụng kiểm tra số dư tiền mặt và ví."
+        fundSelectLabel="Lựa chọn quỹ tiền ra"
+        confirmButtonLabel="Thanh toán"
         defaultCurrency={
           (() => {
             const booking = reservations.find((x) => x.code === arBookingCode);
@@ -810,19 +874,19 @@ export default function FinanceThuPage() {
         onConfirm={(r) => {
           if (!arBookingCode) return;
           void addCashbookEntryFs({
-            direction: "IN",
+            direction: "OUT",
             sourceId: r.sourceId,
             currency: r.currency as any,
             amount: r.amount,
             method: r.sourceId === "CASH" ? "TM" : "CK",
-            content: `Thu tiền • Booking ${arBookingCode}`,
+            content: `Chi thanh toán • Booking ${arBookingCode}`,
             referenceType: "AR",
             referenceId: arBookingCode,
           });
 
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, r.currency, r.amount);
+            void adjustDriverWalletBalanceFs(walletKey, r.currency, -r.amount);
           }
         }}
       />
@@ -831,10 +895,15 @@ export default function FinanceThuPage() {
         open={openArAgentPay}
         onOpenChange={(v) => {
           setOpenArAgentPay(v);
-          if (!v) setArAgentId(null);
+          if (!v) {
+            setArAgentId(null);
+            router.push("/finance/chi");
+          }
         }}
         title="Thanh toán công nợ (Travel Agent)"
-        description="Ghi nhận thu tiền công nợ thực tế vào Sổ thu chi."
+        description="Chọn quỹ — ghi nhận thu/chi công nợ theo số dư; xem sổ tại mục Chi."
+        fundSelectLabel="Lựa chọn quỹ tiền ra"
+        confirmButtonLabel="Thanh toán"
         defaultCurrency={
           (() => {
             const row = congNoByAgent.find((x) => x.agentId === arAgentId);

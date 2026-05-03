@@ -133,15 +133,15 @@ export function ThuHoTransactionDialog(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>CHI TIẾT GIAO DỊCH</DialogTitle>
+          <DialogTitle>Thu tiền thu hộ</DialogTitle>
           <DialogDescription>
-            Chọn nguồn tiền, loại tiền và số tiền thu hộ — ghi nhận vào sổ và ví (nếu có).
+            Giao dịch thu tiền — tiền vào quỹ đã chọn. Không kiểm tra số dư trước khi ghi nhận.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Nguồn tiền</div>
+            <div className="text-sm font-medium">Lựa chọn quỹ tiền vào</div>
             <select
               className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-950"
               value={topSource}
@@ -204,32 +204,50 @@ export function ThuHoTransactionDialog(props: {
             </div>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1">
-              <div className="text-sm font-medium">Loại tiền</div>
-              <select
-                className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
-                value={currency}
-                disabled={!!lockedCurrency}
-                onChange={(e) => setCurrency(e.target.value as PaymentCurrency)}
-              >
-                {allowedCurrencyList.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+          {topSource === "BANK" ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900/40">
+                <span className="text-zinc-500 dark:text-zinc-400">Đơn vị tiền tệ (theo TK): </span>
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100">{lockedCurrency ?? "—"}</span>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-medium">Số tiền</div>
+                <Input
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="0"
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <div className="text-sm font-medium">Số tiền</div>
-              <Input
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                inputMode="numeric"
-                placeholder="0"
-              />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-sm font-medium">Đơn vị tiền tệ</div>
+                <select
+                  className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
+                  value={currency}
+                  disabled={!!lockedCurrency}
+                  onChange={(e) => setCurrency(e.target.value as PaymentCurrency)}
+                >
+                  {allowedCurrencyList.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-medium">Số tiền</div>
+                <Input
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="0"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {error ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -267,7 +285,7 @@ export function ThuHoTransactionDialog(props: {
                 }
               }}
             >
-              {busy ? "Đang lưu…" : "Xác nhận thu tiền"}
+              {busy ? "Đang lưu…" : "Thu Tiền"}
             </Button>
           </div>
         </div>
