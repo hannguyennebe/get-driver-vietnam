@@ -672,17 +672,6 @@ function sortedCurrencyAmountEntries(map: Record<string, number>): Array<{ cur: 
   return out;
 }
 
-/** Số lớn gọn (K/M/B) cho headline doanh thu; VND dùng formatCompactVnd. */
-function formatCompactAmount(n: number, cur: string) {
-  const c = String(cur || "VND").trim().toUpperCase() || "VND";
-  if (c === "VND") return formatCompactVnd(n);
-  const v = Math.abs(Number(n ?? 0) || 0);
-  if (v >= 1_000_000_000) return `${Math.round(v / 1_000_000_000)}B`;
-  if (v >= 1_000_000) return `${Math.round(v / 1_000_000)}M`;
-  if (v >= 1_000) return `${Math.round(v / 1_000)}K`;
-  return (Number(n ?? 0) || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
-}
-
 function DoanhThuCurrencyStack({ map }: { map: Record<string, number> }) {
   const rows = sortedCurrencyAmountEntries(map);
   if (rows.length === 0) {
@@ -745,11 +734,8 @@ function DoanhThuTripMonthCard({
               <div className="text-3xl font-semibold tabular-nums text-zinc-400 dark:text-zinc-500">0</div>
             ) : (
               totalsHeadline.map(({ cur, amt }) => (
-                <div key={cur} className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-3xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {formatCompactAmount(amt, cur)}
-                  </span>
-                  <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">{cur}</span>
+                <div key={cur} className="text-2xl font-semibold tabular-nums leading-snug text-zinc-900 sm:text-3xl dark:text-zinc-50">
+                  {formatAmount(amt, cur)}
                 </div>
               ))
             )}
