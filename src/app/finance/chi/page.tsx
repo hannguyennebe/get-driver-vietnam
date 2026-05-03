@@ -697,18 +697,12 @@ export default function FinanceChiPage() {
               title="Chi phí văn phòng"
               subtitle="Các khoản cố định theo tháng + quản lý thanh toán"
             >
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <OfficeCard
                   title="Các Khoản Phải Chi Văn Phòng"
                   desc="Danh sách nghĩa vụ chi theo kỳ và hạn thanh toán."
                   button="Xem danh sách"
                   onClick={() => router.push("/finance/phai-tra")}
-                />
-                <OfficeCard
-                  title="Thanh Toán Chi Văn Phòng"
-                  desc="Ghi nhận giao dịch TM/CK cho khoản phải chi."
-                  button="Đi tới thanh toán"
-                  onClick={() => router.push("/finance/thanh-toan")}
                 />
                 <OfficeCard
                   title="Danh Mục Chi Phí Văn Phòng"
