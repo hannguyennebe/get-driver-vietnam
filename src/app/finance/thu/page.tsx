@@ -816,6 +816,7 @@ export default function FinanceThuPage() {
           const booking = reservations.find((x) => x.code === thuHoBookingCode);
           const ta = booking?.travelAgentId ? travelAgentById[booking.travelAgentId] : undefined;
 
+          /* Mã GDV-REV chỉ sinh ở luồng này (Báo cáo Thu Hộ), không dùng addThuHoPaymentFs nơi khác. */
           const payment = await addThuHoPaymentFs({
             bookingCode: thuHoBookingCode,
             travelAgentId: booking?.travelAgentId || undefined,

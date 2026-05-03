@@ -15,11 +15,12 @@ import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
 import type { ThuHoPayment } from "@/lib/finance/thuHoReportStore";
 
 const COL = "thuHoPayments";
-/** Một bản ghi / tháng dương lịch (YYYY-MM): seq đếm GDV-REV-MM-XXXXX */
+/** Bộ đếm mã phiếu GDV-REV — chỉ dùng cho luồng Báo cáo Thu Hộ (không dùng cho thu Phải Thu / Công nợ / TA khác). */
 const REV_COUNTER_COL = "thuHoRevCounters";
 
 /**
- * GDV-REV-MM-XXXXX — MM = tháng tại thời điểm gọi; XXXXX tăng dần, không trùng trong cùng tháng/năm.
+ * GDV-REV-MM-XXXXX — chỉ được gọi từ {@link addThuHoPaymentFs} (màn Báo cáo Thu Hộ).
+ * MM = tháng lúc ghi nhận; XXXXX tăng trong cùng tháng/năm.
  */
 async function allocateThuHoReceiptCode(): Promise<string> {
   const db = getFirebaseDb();
@@ -56,6 +57,10 @@ export function subscribeThuHoPayments(onRows: (rows: ThuHoPayment[]) => void): 
   );
 }
 
+/**
+ * Ghi nhận thu hộ có mã phiếu GDV-REV — **chỉ** dùng từ khối «Báo cáo Thu Hộ» (`/finance/thu`).
+ * Không gọi hàm này cho các luồng thu tiền khác (Phải Thu, công nợ TA, …).
+ */
 export async function addThuHoPaymentFs(
   input: Omit<ThuHoPayment, "id" | "createdAt" | "createdBy" | "createdDate" | "createdTime" | "receiptCode">,
 ) {
