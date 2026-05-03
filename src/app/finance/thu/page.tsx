@@ -610,9 +610,7 @@ export default function FinanceThuPage() {
                           <td className="px-3 py-2">{r.time}</td>
                           <td className="px-3 py-2">{r.itinerary || "—"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">
-                            {forcedPaid
-                              ? `0 ${prefer}`
-                              : formatMoneyMulti(row.total, true)}
+                            {formatMoneyMulti(row.total, true)}
                           </td>
                           <td className="px-3 py-2 text-right">
                             <Button
@@ -640,7 +638,7 @@ export default function FinanceThuPage() {
                                   setPaidFlags(next);
                                   writePaidFlags(next);
                                 }}
-                                title="Đánh dấu đã thu đủ (hiển thị 0)"
+                                title="Đánh dấu đã thu đủ (tắt nút Thu tiền)"
                               />
                             ) : (
                               <Button
