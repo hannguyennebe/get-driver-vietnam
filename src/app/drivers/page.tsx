@@ -48,6 +48,7 @@ type ExternalDispatchRow = {
   code: string;
   driverName: string;
   driverPhone: string;
+  vehicleName: string;
   plate: string;
   tripDate: string; // dd/mm/yyyy
   tripTime: string; // HH:mm
@@ -156,6 +157,7 @@ export default function DriversPage() {
         code: r.code,
         driverName: r.assignedDriver ?? "—",
         driverPhone: r.assignedDriverPhone ?? "—",
+        vehicleName: r.assignedVehicleName?.trim() ? r.assignedVehicleName.trim() : "—",
         plate: r.assignedVehiclePlate ?? "—",
         tripDate: r.date,
         tripTime: r.time,
@@ -192,7 +194,7 @@ export default function DriversPage() {
 
   const filteredExternal = externalRows.filter((r) => {
     const hay =
-      `${r.driverName} ${r.driverPhone} ${r.plate} ${r.tripDate} ${r.customerName} ${r.code}`.toLowerCase();
+      `${r.driverName} ${r.driverPhone} ${r.vehicleName} ${r.plate} ${r.tripDate} ${r.customerName} ${r.code}`.toLowerCase();
     return hay.includes(q.trim().toLowerCase());
   });
 
@@ -1292,6 +1294,7 @@ function ExternalBookingDetails({ code }: { code: string }) {
         <div className="mt-2 grid gap-3 md:grid-cols-2">
           <Detail label="Tên tài xế" value={row.assignedDriver ?? "—"} />
           <Detail label="SĐT tài xế" value={row.assignedDriverPhone ?? "—"} />
+          <Detail label="Tên xe" value={row.assignedVehicleName?.trim() ? row.assignedVehicleName.trim() : "—"} />
           <Detail label="Biển số xe" value={row.assignedVehiclePlate ?? "—"} />
           <Detail label="Loại xe" value={row.vehicleType ?? "—"} />
         </div>

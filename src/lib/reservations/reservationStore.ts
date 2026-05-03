@@ -30,6 +30,8 @@ export type Reservation = {
   note: string;
   status: ReservationStatus;
   assignedDriver?: string;
+  /** Tên xe gọi ý (đặc biệt điều xe ngoài — VD: Toyota Fortuner). */
+  assignedVehicleName?: string;
   assignedVehiclePlate?: string;
   assignedDriverPhone?: string;
   assignedExternalPriceVnd?: number;

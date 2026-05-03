@@ -60,6 +60,7 @@ export default function DashboardPage() {
     reservationStatus?: "Chờ điều xe" | "Đã điều xe";
     driverName?: string;
     driverPhone?: string;
+    vehicleName?: string;
     vehiclePlate?: string;
     note?: string;
     thuHoVnd?: number;
@@ -143,6 +144,7 @@ export default function DashboardPage() {
             reservationStatus: r.status,
             driverName: r.assignedDriver,
             driverPhone: r.assignedDriverPhone,
+            vehicleName: r.assignedVehicleName,
             vehiclePlate: r.assignedVehiclePlate,
             note: r.note,
             thuHoVnd: r.thuHoCurrency === "VND" ? r.thuHoAmount : 0,
@@ -164,6 +166,7 @@ export default function DashboardPage() {
           reservationStatus: undefined,
           driverName: t.driverName,
           driverPhone: t.driverPhone,
+          vehicleName: undefined,
           vehiclePlate: t.vehiclePlate,
           note: "",
           thuHoVnd: 0,
@@ -633,6 +636,7 @@ function ScheduleCard({
     reservationStatus?: "Chờ điều xe" | "Đã điều xe";
     driverName?: string;
     driverPhone?: string;
+    vehicleName?: string;
     vehiclePlate?: string;
     note?: string;
     thuHoVnd?: number;
@@ -648,11 +652,11 @@ function ScheduleCard({
 
   const copyDriverInfo = async () => {
     const text =
-      `📅 Ngày đi: ${trip.dateLabel}\n` +
       `👨‍✈️Driver : ${trip.driverName || "—"}\n` +
       `📞Phone: ${trip.driverPhone || "—"}\n` +
       `🚘CAR    : ${trip.vehicleType || "—"}\n` +
-      `🚖CAR NUMBER : ${trip.vehiclePlate || "—"}`;
+      `🚖CAR NUMBER : ${trip.vehiclePlate || "—"}\n` +
+      `🚖 Car Info: ${trip.vehicleName?.trim() ? trip.vehicleName.trim() : "—"}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -848,6 +852,12 @@ function ScheduleCard({
               <div className="text-zinc-500">🚖CAR NUMBER :</div>
               <div className="font-semibold text-zinc-900 dark:text-zinc-50">
                 {trip.vehiclePlate || "—"}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-zinc-500 shrink-0">🚖 Car Info:</div>
+              <div className="min-w-0 text-right font-semibold text-zinc-900 dark:text-zinc-50">
+                {trip.vehicleName?.trim() ? trip.vehicleName.trim() : "—"}
               </div>
             </div>
           </div>

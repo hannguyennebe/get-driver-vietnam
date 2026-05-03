@@ -620,6 +620,7 @@ function ReservationNewInner() {
                         status: "Chờ điều xe",
                         assignedDriver: null as any,
                         assignedDriverPhone: null as any,
+                        assignedVehicleName: null as any,
                         assignedVehiclePlate: null as any,
                         assignedExternalPriceVnd: null as any,
                         assignedSupplierId: null as any,

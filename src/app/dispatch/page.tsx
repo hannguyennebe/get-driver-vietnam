@@ -65,6 +65,7 @@ function DispatchInner() {
   const [extForm, setExtForm] = React.useState({
     name: "",
     phone: "",
+    vehicleName: "",
     plate: "",
     priceVnd: "",
     supplierId: "",
@@ -102,6 +103,7 @@ function DispatchInner() {
       setExtForm({
         name: o.assignedDriver ?? "",
         phone: o.assignedDriverPhone ?? "",
+        vehicleName: o.assignedVehicleName ?? "",
         plate: o.assignedVehiclePlate ?? "",
         priceVnd: o.assignedExternalPriceVnd
           ? String(o.assignedExternalPriceVnd)
@@ -116,6 +118,7 @@ function DispatchInner() {
       setExtForm({
         name: "",
         phone: "",
+        vehicleName: "",
         plate: "",
         priceVnd: "",
         supplierId: "",
@@ -216,6 +219,7 @@ function DispatchInner() {
                             setExtForm({
                               name: "",
                               phone: "",
+                              vehicleName: "",
                               plate: "",
                               priceVnd: "",
                               supplierId: "",
@@ -364,6 +368,15 @@ function DispatchInner() {
                       inputMode="tel"
                     />
                   </Field>
+                  <Field label="Tên xe">
+                    <Input
+                      value={extForm.vehicleName}
+                      onChange={(e) =>
+                        setExtForm({ ...extForm, vehicleName: e.target.value })
+                      }
+                      placeholder="VD: Toyota Fortuner, Ford Transit…"
+                    />
+                  </Field>
                   <Field label="Biển số xe">
                     <Input
                       value={extForm.plate}
@@ -445,6 +458,7 @@ function DispatchInner() {
                           status: "Đã điều xe",
                           assignedDriver: d.name,
                           assignedDriverPhone: d.phone,
+                          assignedVehicleName: null,
                           assignedVehiclePlate: selectedPlate,
                           assignedExternalPriceVnd: null,
                           assignedSupplierId: null,
@@ -468,6 +482,7 @@ function DispatchInner() {
                     const price = Number(extForm.priceVnd.replace(/[^\d]/g, ""));
                     const nm = extForm.name.trim();
                     const ph = extForm.phone.trim();
+                    const vn = extForm.vehicleName.trim();
                     const pl = extForm.plate.trim();
                     setConfirmBusy(true);
                     try {
@@ -475,6 +490,7 @@ function DispatchInner() {
                         status: "Đã điều xe",
                         assignedDriver: nm,
                         assignedDriverPhone: ph,
+                        assignedVehicleName: vn || null,
                         assignedVehiclePlate: pl,
                         assignedExternalPriceVnd: Number.isFinite(price) ? price : null,
                         assignedSupplierId: extForm.supplierId || null,
