@@ -127,6 +127,13 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin() || hasEdit("finance.thu");
     }
 
+    // Bộ đếm mã phiếu GDV-REV (transaction read+write khi thu hộ)
+    match /thuHoRevCounters/{id} {
+      allow read: if isAdmin() || hasView("finance.thu");
+      allow create, update: if isAdmin() || hasEdit("finance.thu");
+      allow delete: if isAdmin();
+    }
+
     match /ap_templates/{id} {
       allow read: if isAdmin() || hasView("finance.chi") || hasView("finance.phai-tra");
       allow create, update, delete: if isAdmin() || hasEdit("finance.chi") || hasEdit("finance.phai-tra");
