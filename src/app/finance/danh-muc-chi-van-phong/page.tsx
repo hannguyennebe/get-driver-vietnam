@@ -18,6 +18,7 @@ import {
 } from "@/lib/finance/apStore";
 import type { ExpenseInstance } from "@/lib/finance/apStore";
 import {
+  cancelUnpaidApExpensesBeforeAccrualPeriodFs,
   finalizeApTemplateEarlyFs,
   subscribeApExpenses,
   subscribeApTemplates,
@@ -418,6 +419,13 @@ export default function OfficeExpenseCatalogPage() {
                   (async () => {
                     try {
                       await upsertApTemplateFs(tpl);
+                      if (dialogMode === "edit") {
+                        await cancelUnpaidApExpensesBeforeAccrualPeriodFs({
+                          templateId: tpl.id,
+                          minAccrualPeriod: start,
+                          existingExpenses: expenses,
+                        });
+                      }
                       setOpenAdd(false);
                     } catch (e) {
                       const msg = String((e as any)?.message ?? e ?? "unknown");

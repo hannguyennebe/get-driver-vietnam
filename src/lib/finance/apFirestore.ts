@@ -242,6 +242,32 @@ export async function ensureRecurringExpensesForRangeFs(input: {
   if (writes.length) await Promise.all(writes);
 }
 
+/**
+ * Các khoản `EXP-…` do `ensureRecurring…` tạo trước đó **không** tự xoá khi sửa kỳ bắt đầu trên danh mục.
+ * Gọi sau khi lưu danh mục: đánh dấu **Huỷ** mọi kỳ **Chưa trả** có kỳ ghi nhận trước `minAccrualPeriod`
+ * (kỳ bắt đầu vừa lưu), để Phải trả không còn hiện kỳ cũ quá hạn.
+ */
+export async function cancelUnpaidApExpensesBeforeAccrualPeriodFs(input: {
+  templateId: string;
+  minAccrualPeriod: { month: number; year: number };
+  existingExpenses: ExpenseInstance[];
+}): Promise<void> {
+  const db = getFirebaseDb();
+  const tid = String(input.templateId || "").trim();
+  if (!tid) throw new Error("missing_template_id");
+
+  const writes: Array<Promise<unknown>> = [];
+  for (const e of input.existingExpenses) {
+    if (e.templateId !== tid) continue;
+    if (e.status !== "Unpaid") continue;
+    if (!comparePeriod(e.accrualPeriod, input.minAccrualPeriod).lt) continue;
+    writes.push(
+      setDoc(doc(db, COL_EXP, e.id), { status: "Cancelled" } as Record<string, unknown>, { merge: true }),
+    );
+  }
+  if (writes.length) await Promise.all(writes);
+}
+
 export async function finalizeApTemplateEarlyFs(input: {
   templateId: string;
   effectiveTo: { month: number; year: number };
