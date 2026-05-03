@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -162,6 +163,31 @@ export async function addApPaymentFs(input: {
   });
 
   return payment;
+}
+
+/** Hoàn tác một lần thanh toán phải trả (Admin): xóa phiếu và trừ paidVnd trên khoản chi. */
+export async function deleteApPaymentFs(paymentId: string): Promise<void> {
+  const db = getFirebaseDb();
+  const pid = String(paymentId || "").trim();
+  if (!pid) throw new Error("missing_payment_id");
+  const payRef = doc(db, COL_PAY, pid);
+  await runTransaction(db, async (tx) => {
+    const paySnap = await tx.get(payRef);
+    if (!paySnap.exists()) throw new Error("payment_not_found");
+    const pay = paySnap.data() as PaymentTransaction;
+    const expRef = doc(db, COL_EXP, String(pay.expenseId));
+    const expSnap = await tx.get(expRef);
+    if (!expSnap.exists()) throw new Error("expense_not_found");
+    const exp = expSnap.data() as ExpenseInstance;
+    const currPaid = Number((exp as { paidVnd?: unknown }).paidVnd ?? 0) || 0;
+    const dec = Number(pay.amountVnd ?? 0) || 0;
+    const nextPaid = Math.max(0, currPaid - dec);
+    const total = Number(exp.amountVnd ?? 0) || 0;
+    const status =
+      nextPaid <= 0 ? ("Unpaid" as const) : nextPaid >= total ? ("Paid" as const) : ("PartiallyPaid" as const);
+    tx.delete(payRef);
+    tx.set(expRef, { paidVnd: nextPaid, status } as Record<string, unknown>, { merge: true });
+  });
 }
 
 export async function ensureRecurringExpensesForRangeFs(input: {

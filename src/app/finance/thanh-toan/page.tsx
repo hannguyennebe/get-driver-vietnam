@@ -260,8 +260,9 @@ function FinanceThanhToanInner() {
           if (amountVnd > remaining) throw new Error("Số tiền vượt quá số còn lại.");
           if (!form.paidAtISO) throw new Error("Vui lòng chọn ngày thanh toán.");
 
+          let payment;
           try {
-            await addApPaymentFs({
+            payment = await addApPaymentFs({
               expenseId: expense.id,
               paidAtISO: form.paidAtISO,
               amountVnd,
@@ -286,7 +287,7 @@ function FinanceThanhToanInner() {
             method: methodFromSourceId(r.sourceId),
             content: `Chi • ${expense.name} • ${String(expense.accrualPeriod.month).padStart(2, "0")}/${expense.accrualPeriod.year}`,
             referenceType: "AP",
-            referenceId: expense.id,
+            referenceId: payment.id,
           });
 
           if (r.sourceId.startsWith("WALLET:")) {

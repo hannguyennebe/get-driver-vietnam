@@ -1213,7 +1213,7 @@ export default function FinanceChiPage() {
             return setAddError("Khoản chi khác hiện chỉ hỗ trợ VND hoặc USD.");
           }
 
-          await addOtherExpenseFs({
+          const oex = await addOtherExpenseFs({
             content: addForm.content,
             amount,
             currency: cur as OtherExpenseCurrency,
@@ -1227,7 +1227,7 @@ export default function FinanceChiPage() {
             method: r.sourceId === "CASH" ? "TM" : "CK",
             content: `Chi khác • ${addForm.content.trim()}`,
             referenceType: "OTHER_EXPENSE",
-            referenceId: addForm.content.trim(),
+            referenceId: oex.id,
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
@@ -1333,7 +1333,7 @@ export default function FinanceChiPage() {
           const amount = Math.round(Number(r.amount ?? 0) || 0);
           if (!amount || amount <= 0) return setAdvanceError("Số tiền không hợp lệ.");
 
-          await addDriverAdvanceFs({
+          const adv = await addDriverAdvanceFs({
             driverEmployeeCode: selectedPayrollDriver.employeeCode,
             driverName: selectedPayrollDriver.name,
             amountVnd: amount,
@@ -1347,7 +1347,7 @@ export default function FinanceChiPage() {
             method: r.sourceId === "CASH" ? "TM" : "CK",
             content: `Tạm ứng • ${selectedPayrollDriver.name} • ${selectedPayrollDriver.employeeCode}`,
             referenceType: "DRIVER_ADVANCE",
-            referenceId: selectedPayrollDriver.employeeCode,
+            referenceId: adv.id,
           });
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
@@ -1453,7 +1453,7 @@ export default function FinanceChiPage() {
           }
           if (opType !== "VETC" && !opForm.vehiclePlate) return setOpError("Vui lòng chọn xe.");
 
-          await addOperatingExpenseFs({
+          const ope = await addOperatingExpenseFs({
             type: opType,
             vehiclePlate: opType === "VETC" ? undefined : opForm.vehiclePlate,
             amountVnd: amount,
@@ -1468,7 +1468,7 @@ export default function FinanceChiPage() {
             method: r.sourceId === "CASH" ? "TM" : "CK",
             content: `Chi vận hành • ${opType}${opType === "VETC" ? "" : ` • ${opForm.vehiclePlate}`}`,
             referenceType: "OP_EXPENSE",
-            referenceId: opType,
+            referenceId: ope.id,
           });
 
           if (r.sourceId.startsWith("WALLET:")) {

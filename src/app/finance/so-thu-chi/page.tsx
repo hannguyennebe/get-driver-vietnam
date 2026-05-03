@@ -13,9 +13,12 @@ import { subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
 import {
   isInternalCashbookMovement,
   subscribeCashbookUndoLogs,
+  undoGeneralCashbookEntryFs,
   undoInternalCashbookEntriesFs,
   type CashbookUndoLog,
 } from "@/lib/finance/cashbookUndoFirestore";
+import { subscribeThuHoPayments } from "@/lib/finance/thuHoFirestore";
+import type { ThuHoPayment } from "@/lib/finance/thuHoReportStore";
 import { getDemoSession } from "@/lib/auth/demo";
 import { type Reservation } from "@/lib/reservations/reservationStore";
 import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
@@ -69,6 +72,7 @@ export default function FinanceSoThuChiPage() {
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
   const [driverWallets, setDriverWallets] = React.useState<DriverWallet[]>([]);
   const [cashbookUndoLogs, setCashbookUndoLogs] = React.useState<CashbookUndoLog[]>([]);
+  const [thuHoPayments, setThuHoPayments] = React.useState<ThuHoPayment[]>([]);
   const [undoBusyId, setUndoBusyId] = React.useState<string | null>(null);
 
   /** Dẫn xuất chỉ đọc snapshot trong state — không ghi Firestore; tái tính khi dữ liệu đổi. */
@@ -192,6 +196,7 @@ export default function FinanceSoThuChiPage() {
     const unsubAdv = subscribeDriverAdvances(setDriverAdvances);
     const unsubWallets = subscribeDriverWallets(setDriverWallets);
     const unsubUndo = subscribeCashbookUndoLogs(setCashbookUndoLogs);
+    const unsubThuHo = subscribeThuHoPayments(setThuHoPayments);
     return () => {
       unsubR();
       unsubCb();
@@ -203,6 +208,7 @@ export default function FinanceSoThuChiPage() {
       unsubAdv();
       unsubWallets();
       unsubUndo();
+      unsubThuHo();
     };
   }, []);
 
@@ -227,7 +233,7 @@ export default function FinanceSoThuChiPage() {
   );
 
   const isAdmin = getDemoSession()?.role === "Admin";
-  const showUndoCol = tab === "NoiBo" && isAdmin;
+  const showUndoCol = isAdmin;
   const showDirectionCol = tab === "NoiBo";
   const sumTitle =
     tab === "Thu" ? "Thực Thu" : tab === "Chi" ? "Thực Chi" : "Nội bộ";
@@ -475,16 +481,19 @@ export default function FinanceSoThuChiPage() {
                           className="h-8 rounded-md px-3 text-xs"
                           disabled={undoBusyId !== null}
                           onClick={() => {
-                            if (
-                              !confirm(
-                                "Hoàn tác giao dịch nội bộ? Các dòng sổ liên quan sẽ bị xóa (và hoàn ví nếu có).",
-                              )
-                            )
-                              return;
+                            const confirmMsg =
+                              tab === "NoiBo"
+                                ? "Hoàn tác giao dịch nội bộ? Các dòng sổ liên quan sẽ bị xóa; ví được hoàn đúng chiều (như chưa chuyển)."
+                                : "Hoàn tác dòng này? Gỡ ghi sổ và khôi phục ví / phiếu liên quan (thu hộ, phải trả, chi khác…) — trạng thái như chưa thực hiện.";
+                            if (!confirm(confirmMsg)) return;
                             setUndoBusyId(r.id);
                             void (async () => {
                               try {
-                                await undoInternalCashbookEntriesFs(r.id, cashbookEntries);
+                                if (tab === "NoiBo") {
+                                  await undoInternalCashbookEntriesFs(r.id, cashbookEntries);
+                                } else {
+                                  await undoGeneralCashbookEntryFs(r.id, cashbookEntries, thuHoPayments);
+                                }
                               } catch (err) {
                                 window.alert(
                                   String((err as { message?: unknown })?.message ?? err ?? "Hoàn tác thất bại."),
@@ -515,7 +524,9 @@ export default function FinanceSoThuChiPage() {
           <div className="mt-8 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Báo cáo hoàn tác</div>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-              Các giao dịch nội bộ đã hoàn tác (Admin). Nguồn: nhật ký xóa dòng sổ và khôi phục ví khi đủ điều kiện.
+              Mỗi lần Admin bấm Hoàn tác ở Thực Thu, Thực Chi hoặc Nội bộ đều ghi lại ở đây. Hệ thống gỡ dòng sổ, hoàn
+              số dư ví nếu có, và (khi sổ gắn mã bản ghi) gỡ luôn phiếu liên quan: thanh toán phải trả, thu hộ, chi khác,
+              tạm ứng, chi vận hành — như chưa thực hiện tác vụ đó.
             </p>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-sm">

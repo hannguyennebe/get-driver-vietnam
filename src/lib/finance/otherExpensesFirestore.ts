@@ -1,4 +1,13 @@
-import { collection, doc, onSnapshot, orderBy, query, setDoc, type Unsubscribe } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  type Unsubscribe,
+} from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
 import type { OtherExpense } from "@/lib/finance/otherExpensesStore";
@@ -46,5 +55,10 @@ export async function addOtherExpenseFs(input: Omit<OtherExpense, "id" | "create
   };
   await setDoc(doc(db, COL, next.id), stripUndefined(next), { merge: false });
   return next;
+}
+
+export async function deleteOtherExpenseFs(id: string): Promise<void> {
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, COL, String(id || "").trim()));
 }
 

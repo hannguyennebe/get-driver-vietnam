@@ -1,4 +1,13 @@
-import { collection, doc, onSnapshot, orderBy, query, setDoc, type Unsubscribe } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  type Unsubscribe,
+} from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
 import type { DriverAdvance } from "@/lib/finance/driverAdvancesStore";
@@ -48,5 +57,10 @@ export async function addDriverAdvanceFs(
   };
   await setDoc(doc(db, COL, next.id), stripUndefined(next), { merge: false });
   return next;
+}
+
+export async function deleteDriverAdvanceFs(id: string): Promise<void> {
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, COL, String(id || "").trim()));
 }
 
