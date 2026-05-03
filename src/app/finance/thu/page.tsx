@@ -582,6 +582,7 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2">Ngày đi</th>
                       <th className="px-3 py-2">Giờ đi</th>
                       <th className="px-3 py-2">Hành trình</th>
+                      <th className="px-3 py-2">Mã phiếu thu</th>
                       <th className="px-3 py-2 text-right">Số tiền thu hộ</th>
                       <th className="px-3 py-2 text-right">Thu Tiền</th>
                       <th className="px-3 py-2 text-center">
@@ -600,6 +601,11 @@ export default function FinanceThuPage() {
                       const flagKey = paidFlagKeyThuHo(r.code);
                       const forcedPaid = Boolean(paidFlags[flagKey]);
                       const isAdmin = getDemoSession()?.role === "Admin";
+                      const receiptCodes = thuHoPayments
+                        .filter((p) => String(p.bookingCode || "").trim() === r.code)
+                        .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+                        .map((p) => p.receiptCode)
+                        .filter((x): x is string => Boolean(x));
 
                       return (
                         <tr key={r.code} className="bg-white dark:bg-zinc-950">
@@ -609,6 +615,13 @@ export default function FinanceThuPage() {
                           <td className="px-3 py-2">{r.date}</td>
                           <td className="px-3 py-2">{r.time}</td>
                           <td className="px-3 py-2">{r.itinerary || "—"}</td>
+                          <td className="max-w-[11rem] px-3 py-2 align-top text-xs font-medium text-zinc-800 dark:text-zinc-200">
+                            {receiptCodes.length > 0 ? (
+                              <span className="break-all">{receiptCodes.join(", ")}</span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right tabular-nums">
                             {formatMoneyMulti(row.total, true)}
                           </td>
@@ -687,7 +700,7 @@ export default function FinanceThuPage() {
 
                     {thuHoRows.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-3 py-8 text-center text-zinc-500">
+                        <td colSpan={10} className="px-3 py-8 text-center text-zinc-500">
                           Chưa có booking Thu Hộ.
                         </td>
                       </tr>
@@ -798,13 +811,12 @@ export default function FinanceThuPage() {
         }}
         defaultCurrency={(thuHoForm.currency ?? "VND") as any}
         defaultAmount={Number(String(thuHoForm.amount).replace(/[^\d.]/g, "")) || undefined}
-        onConfirm={(r) => {
+        onConfirm={async (r) => {
           if (!thuHoBookingCode) return;
           const booking = reservations.find((x) => x.code === thuHoBookingCode);
           const ta = booking?.travelAgentId ? travelAgentById[booking.travelAgentId] : undefined;
 
-          // Persist payment record (thu hộ)
-          void addThuHoPaymentFs({
+          const payment = await addThuHoPaymentFs({
             bookingCode: thuHoBookingCode,
             travelAgentId: booking?.travelAgentId || undefined,
             travelAgentName: ta?.name ?? undefined,
@@ -813,23 +825,23 @@ export default function FinanceThuPage() {
             method: r.sourceId === "CASH" ? "TM" : "CK",
           });
 
-          // Cashbook entry: thu tiền vào nguồn đã chọn
-          void addCashbookEntryFs({
+          const rc = payment.receiptCode ?? "";
+          await addCashbookEntryFs({
             direction: "IN",
             sourceId: r.sourceId,
             currency: r.currency as any,
             amount: r.amount,
             method: r.sourceId === "CASH" ? "TM" : "CK",
-            content: `Thu hộ • Booking ${thuHoBookingCode}`,
+            content: rc
+              ? `Thu hộ • ${rc} • Booking ${thuHoBookingCode}`
+              : `Thu hộ • Booking ${thuHoBookingCode}`,
             referenceType: "ThuHo",
             referenceId: thuHoBookingCode,
           });
 
-          // If wallet source: increase wallet balance
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            // Thu vào ví = tăng số dư
-            void adjustDriverWalletBalanceFs(walletKey, r.currency, r.amount);
+            await adjustDriverWalletBalanceFs(walletKey, r.currency, r.amount);
           }
         }}
       />

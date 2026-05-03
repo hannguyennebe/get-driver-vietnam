@@ -5,6 +5,8 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
+  serverTimestamp,
   setDoc,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -13,6 +15,32 @@ import { getCurrentUserIdentity } from "@/lib/auth/currentUser";
 import type { ThuHoPayment } from "@/lib/finance/thuHoReportStore";
 
 const COL = "thuHoPayments";
+/** Một bản ghi / tháng dương lịch (YYYY-MM): seq đếm GDV-REV-MM-XXXXX */
+const REV_COUNTER_COL = "thuHoRevCounters";
+
+/**
+ * GDV-REV-MM-XXXXX — MM = tháng tại thời điểm gọi; XXXXX tăng dần, không trùng trong cùng tháng/năm.
+ */
+async function allocateThuHoReceiptCode(): Promise<string> {
+  const db = getFirebaseDb();
+  const now = new Date();
+  const y = now.getFullYear();
+  const mo = now.getMonth() + 1;
+  const mm = String(mo).padStart(2, "0");
+  const periodKey = `${y}-${mm}`;
+  const periodRef = doc(db, REV_COUNTER_COL, periodKey);
+
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(periodRef);
+    const prev = snap.exists() ? Number((snap.data() as { seq?: number }).seq ?? 0) : 0;
+    const next = prev + 1;
+    if (next > 99999) {
+      throw new Error("Hết dải mã thu hộ trong tháng (tối đa 99.999).");
+    }
+    tx.set(periodRef, { seq: next, updatedAt: serverTimestamp() }, { merge: true });
+    return `GDV-REV-${mm}-${String(next).padStart(5, "0")}`;
+  });
+}
 
 export function subscribeThuHoPayments(onRows: (rows: ThuHoPayment[]) => void): Unsubscribe {
   const db = getFirebaseDb();
@@ -28,12 +56,16 @@ export function subscribeThuHoPayments(onRows: (rows: ThuHoPayment[]) => void): 
   );
 }
 
-export async function addThuHoPaymentFs(input: Omit<ThuHoPayment, "id" | "createdAt" | "createdBy" | "createdDate" | "createdTime">) {
+export async function addThuHoPaymentFs(
+  input: Omit<ThuHoPayment, "id" | "createdAt" | "createdBy" | "createdDate" | "createdTime" | "receiptCode">,
+) {
   const db = getFirebaseDb();
   const now = new Date();
   const me = getCurrentUserIdentity();
+  const receiptCode = await allocateThuHoReceiptCode();
   const next: ThuHoPayment = {
     ...input,
+    receiptCode,
     id: `THUHO-${String(Date.now())}-${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`,
     createdAt: Date.now(),
     createdBy: me?.name ?? "—",
