@@ -1109,6 +1109,7 @@ function WalletDetailsDialog({ driverName, wallet }: { driverName: string; walle
                     return setTransferError("VND không chuyển về TK USD.");
                   }
 
+                  const xferRef = `XFER:${wallet.key}:${Date.now()}`;
                   // OUT from wallet
                   void addCashbookEntryFs({
                     direction: "OUT",
@@ -1118,7 +1119,7 @@ function WalletDetailsDialog({ driverName, wallet }: { driverName: string; walle
                     method: "CK",
                     content: `Chuyển tiền • OUT • ${wallet.walletName}`,
                     referenceType: "WALLET_TRANSFER",
-                    referenceId: `${wallet.key}:${Date.now()}`,
+                    referenceId: xferRef,
                   });
                   // IN to destination
                   void addCashbookEntryFs({
@@ -1129,7 +1130,7 @@ function WalletDetailsDialog({ driverName, wallet }: { driverName: string; walle
                     method: transferDest === "CASH" ? "TM" : "CK",
                     content: `Chuyển tiền • IN • ${wallet.walletName}`,
                     referenceType: "WALLET_TRANSFER",
-                    referenceId: `${wallet.key}:${Date.now()}`,
+                    referenceId: xferRef,
                   });
                   // adjust wallet balance
                   // NOTE: balances in wallet store is the source-of-truth for wallet UI

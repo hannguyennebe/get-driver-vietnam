@@ -122,6 +122,12 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin() || hasEdit("finance.so-thu-chi") || hasEdit("finance.thu") || hasEdit("finance.chi");
     }
 
+    match /cashbookUndoLogs/{id} {
+      allow read: if isAdmin() || hasView("finance.so-thu-chi");
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     match /thuHoPayments/{id} {
       allow read: if isAdmin() || hasView("finance.thu");
       allow create, update, delete: if isAdmin() || hasEdit("finance.thu");

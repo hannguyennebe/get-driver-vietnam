@@ -10,6 +10,13 @@ import {
   type CashbookSourceId,
 } from "@/lib/finance/cashbookStore";
 import { subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
+import {
+  isInternalCashbookMovement,
+  subscribeCashbookUndoLogs,
+  undoInternalCashbookEntriesFs,
+  type CashbookUndoLog,
+} from "@/lib/finance/cashbookUndoFirestore";
+import { getDemoSession } from "@/lib/auth/demo";
 import { type Reservation } from "@/lib/reservations/reservationStore";
 import { subscribeActiveReservations } from "@/lib/reservations/reservationsFirestore";
 import type { ExpenseInstance, PaymentTransaction } from "@/lib/finance/apStore";
@@ -26,17 +33,19 @@ import type { DriverWallet } from "@/lib/fleet/driverWalletStore";
 import { subscribeDriverWallets } from "@/lib/fleet/driverWalletsFirestore";
 import { CASH_FUND_CURRENCY_OPTIONS } from "@/components/finance/paymentConfirmTypes";
 
-type CashflowType = "Thu" | "Chi";
+type CashflowType = "Thu" | "Chi" | "NoiBo";
 
 type CashflowRow = {
   id: string;
-  type: CashflowType;
+  type: "Thu" | "Chi";
   date: string; // dd/mm/yyyy
   time: string; // HH:mm
   content: string;
   amount: number;
   currency: string;
   source: string;
+  /** Giao dịch nội bộ (chuyển quỹ), không hiển thị ở Thực Thu/Chi */
+  internal: boolean;
 };
 
 export default function FinanceSoThuChiPage() {
@@ -59,6 +68,8 @@ export default function FinanceSoThuChiPage() {
   });
   const [reservations, setReservations] = React.useState<Reservation[]>([]);
   const [driverWallets, setDriverWallets] = React.useState<DriverWallet[]>([]);
+  const [cashbookUndoLogs, setCashbookUndoLogs] = React.useState<CashbookUndoLog[]>([]);
+  const [undoBusyId, setUndoBusyId] = React.useState<string | null>(null);
 
   /** Dẫn xuất chỉ đọc snapshot trong state — không ghi Firestore; tái tính khi dữ liệu đổi. */
   const { paymentInfo, balances, cashflowBoxes, rows } = React.useMemo(() => {
@@ -157,6 +168,7 @@ export default function FinanceSoThuChiPage() {
       amount: e.amount,
       currency: String(e.currency || "VND").trim().toUpperCase() || "VND",
       source: sourceLabel(e.sourceId, pi),
+      internal: isInternalCashbookMovement(e),
     }));
     out.sort((a, b) => tripKey(b.date, b.time) - tripKey(a.date, a.time));
 
@@ -179,6 +191,7 @@ export default function FinanceSoThuChiPage() {
     const unsubOe = subscribeOtherExpenses(setOtherExpenses);
     const unsubAdv = subscribeDriverAdvances(setDriverAdvances);
     const unsubWallets = subscribeDriverWallets(setDriverWallets);
+    const unsubUndo = subscribeCashbookUndoLogs(setCashbookUndoLogs);
     return () => {
       unsubR();
       unsubCb();
@@ -189,13 +202,18 @@ export default function FinanceSoThuChiPage() {
       unsubOe();
       unsubAdv();
       unsubWallets();
+      unsubUndo();
     };
   }, []);
 
   const filtered = React.useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows
-      .filter((r) => r.type === tab)
+      .filter((r) => {
+        if (tab === "NoiBo") return r.internal;
+        if (tab === "Thu") return r.type === "Thu" && !r.internal;
+        return r.type === "Chi" && !r.internal;
+      })
       .filter((r) => {
         if (!needle) return true;
         const hay = `${r.content} ${r.source} ${r.date} ${r.time}`.toLowerCase();
@@ -207,6 +225,14 @@ export default function FinanceSoThuChiPage() {
     () => filtered.reduce((s, r) => s + (r.currency === "VND" ? (r.amount || 0) : 0), 0),
     [filtered],
   );
+
+  const isAdmin = getDemoSession()?.role === "Admin";
+  const showUndoCol = tab === "NoiBo" && isAdmin;
+  const showDirectionCol = tab === "NoiBo";
+  const sumTitle =
+    tab === "Thu" ? "Thực Thu" : tab === "Chi" ? "Thực Chi" : "Nội bộ";
+  const tableColSpan =
+    5 + (showDirectionCol ? 1 : 0) + (showUndoCol ? 1 : 0);
 
   /** Doanh thu: tất cả booking có ngày đi trong tháng — cộng thành tiền theo loại tiền (không liên quan thanh toán thực tế). Chi tiết hai dòng: điều khoản Phải Thu / Công nợ trên booking. */
   const revenueTripMonth = React.useMemo(() => {
@@ -244,6 +270,7 @@ export default function FinanceSoThuChiPage() {
       .filter((r) => r.currency === "VND")
       .filter((r) => (r.date || "").endsWith(key))
       .filter((r) => r.type === "Chi")
+      .filter((r) => !r.internal)
       .reduce((s, r) => s + (r.amount || 0), 0);
     return { outVnd };
   }, [rows, monthSel.year, monthSel.month]);
@@ -344,7 +371,7 @@ export default function FinanceSoThuChiPage() {
           </div>
 
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <MonthlyInOutChart rows={rows} />
+            <MonthlyInOutChart rows={rows.filter((r) => !r.internal)} />
             <ExpenseDonutCard
               reservations={reservations}
               operatingExpenses={operatingExpenses}
@@ -381,6 +408,16 @@ export default function FinanceSoThuChiPage() {
               >
                 Thực Chi
               </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className={`h-9 rounded-md px-4 ${
+                  tab === "NoiBo" ? "bg-zinc-100 dark:bg-zinc-900" : ""
+                }`}
+                onClick={() => setTab("NoiBo")}
+              >
+                Nội bộ
+              </Button>
             </div>
             <div className="w-full max-w-md md:ml-auto">
               <Input
@@ -392,7 +429,7 @@ export default function FinanceSoThuChiPage() {
           </div>
 
           <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-300">
-            Tổng {tab === "Thu" ? "Thực Thu" : "Thực Chi"}:{" "}
+            Tổng {sumTitle}:{" "}
             <span className="font-semibold text-zinc-900 dark:text-zinc-50">
               {sum.toLocaleString("vi-VN")} VND
             </span>
@@ -404,9 +441,15 @@ export default function FinanceSoThuChiPage() {
                 <tr>
                   <th className="whitespace-nowrap px-3 py-2">Ngày</th>
                   <th className="whitespace-nowrap px-3 py-2">Giờ</th>
+                  {showDirectionCol ? (
+                    <th className="whitespace-nowrap px-3 py-2">Thu / Chi</th>
+                  ) : null}
                   <th className="px-3 py-2">Nội dung</th>
                   <th className="px-3 py-2">Nguồn</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">Số tiền</th>
+                  {showUndoCol ? (
+                    <th className="whitespace-nowrap px-3 py-2 text-right">Thao tác</th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
@@ -414,22 +457,99 @@ export default function FinanceSoThuChiPage() {
                   <tr key={r.id} className="bg-white dark:bg-zinc-950">
                     <td className="whitespace-nowrap px-3 py-2.5">{r.date}</td>
                     <td className="whitespace-nowrap px-3 py-2.5">{r.time}</td>
+                    {showDirectionCol ? (
+                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-zinc-700 dark:text-zinc-200">
+                        {r.type}
+                      </td>
+                    ) : null}
                     <td className="px-3 py-2.5">{r.content || "—"}</td>
                     <td className="px-3 py-2.5 text-zinc-500 dark:text-zinc-400">{r.source}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums font-medium">
                       {formatAmount(r.amount, r.currency)}
                     </td>
+                    {showUndoCol ? (
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-8 rounded-md px-3 text-xs"
+                          disabled={undoBusyId !== null}
+                          onClick={() => {
+                            if (
+                              !confirm(
+                                "Hoàn tác giao dịch nội bộ? Các dòng sổ liên quan sẽ bị xóa (và hoàn ví nếu có).",
+                              )
+                            )
+                              return;
+                            setUndoBusyId(r.id);
+                            void (async () => {
+                              try {
+                                await undoInternalCashbookEntriesFs(r.id, cashbookEntries);
+                              } catch (err) {
+                                window.alert(
+                                  String((err as { message?: unknown })?.message ?? err ?? "Hoàn tác thất bại."),
+                                );
+                              } finally {
+                                setUndoBusyId(null);
+                              }
+                            })();
+                          }}
+                        >
+                          {undoBusyId === r.id ? "Đang xử lý…" : "Hoàn tác"}
+                        </Button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-10 text-center text-zinc-500">
+                    <td colSpan={tableColSpan} className="px-3 py-10 text-center text-zinc-500">
                       Chưa có dữ liệu.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-8 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Báo cáo hoàn tác</div>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Các giao dịch nội bộ đã hoàn tác (Admin). Nguồn: nhật ký xóa dòng sổ và khôi phục ví khi đủ điều kiện.
+            </p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="bg-zinc-100 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                  <tr>
+                    <th className="whitespace-nowrap px-3 py-2">Thời điểm</th>
+                    <th className="px-3 py-2">Người thực hiện</th>
+                    <th className="px-3 py-2">Tóm tắt</th>
+                    <th className="px-3 py-2">Dòng đã xóa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
+                  {cashbookUndoLogs.map((log) => (
+                    <tr key={log.id} className="bg-white dark:bg-zinc-950">
+                      <td className="whitespace-nowrap px-3 py-2.5">
+                        {log.createdDate} {log.createdTime}
+                      </td>
+                      <td className="px-3 py-2.5">{log.createdBy}</td>
+                      <td className="px-3 py-2.5">{log.summary}</td>
+                      <td className="max-w-md px-3 py-2.5 text-xs text-zinc-600 dark:text-zinc-300">
+                        {(log.removedEntryIds ?? []).join(", ") || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {cashbookUndoLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-8 text-center text-zinc-500">
+                        Chưa có hoàn tác.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
