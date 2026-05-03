@@ -44,6 +44,12 @@ export function ThuHoTransactionDialog(props: {
   defaultCurrency: PaymentCurrency;
   defaultAmount?: number;
   onConfirm: (r: PaymentConfirmResult) => void | Promise<void>;
+  /** Mặc định: Thu tiền thu hộ */
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  /** Nhãn khối chọn quỹ (vd: công nợ TA) */
+  fundSelectLabel?: string;
 }) {
   const payBtnClass =
     "h-10 rounded-xl px-5 font-semibold text-white shadow-sm " +
@@ -133,15 +139,16 @@ export function ThuHoTransactionDialog(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Thu tiền thu hộ</DialogTitle>
+          <DialogTitle>{props.title ?? "Thu tiền thu hộ"}</DialogTitle>
           <DialogDescription>
-            Giao dịch thu tiền — tiền vào quỹ đã chọn. Không kiểm tra số dư trước khi ghi nhận.
+            {props.description ??
+              "Giao dịch thu tiền — tiền vào quỹ đã chọn. Không kiểm tra số dư trước khi ghi nhận."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Lựa chọn quỹ tiền vào</div>
+            <div className="text-sm font-medium">{props.fundSelectLabel ?? "Lựa chọn quỹ tiền vào"}</div>
             <select
               className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-950"
               value={topSource}
@@ -285,7 +292,7 @@ export function ThuHoTransactionDialog(props: {
                 }
               }}
             >
-              {busy ? "Đang lưu…" : "Thu Tiền"}
+              {busy ? "Đang lưu…" : props.confirmLabel ?? "Thu Tiền"}
             </Button>
           </div>
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app/AppShell";
 import {
   type Currency,
@@ -21,10 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type PartnerPaymentTerms } from "@/lib/data/partnersStore";
 import type { ThuHoPayment } from "@/lib/finance/thuHoReportStore";
-import {
-  PaymentConfirmDialogCredit,
-  PaymentConfirmDialogDebit,
-} from "@/components/finance/PaymentConfirmDialog";
 import { ThuHoTransactionDialog } from "@/components/finance/ThuHoTransactionDialog";
 import type { CashbookEntry } from "@/lib/finance/cashbookStore";
 import { addCashbookEntryFs, subscribeCashbookEntries } from "@/lib/finance/cashbookFirestore";
@@ -35,7 +30,6 @@ import { undoThuHoBookingFs } from "@/lib/finance/undoThuHoBooking";
 // PDF is generated server-side (avoid fontkit browser crashes)
 
 export default function FinanceThuPage() {
-  const router = useRouter();
   const payBtnClass =
     "h-10 rounded-xl px-5 font-semibold text-white shadow-sm " +
     "bg-gradient-to-b from-[#1AAAE1] to-[#0B79B8] " +
@@ -57,8 +51,9 @@ export default function FinanceThuPage() {
     currency: "VND" as Currency,
   });
   const [openPayConfirm, setOpenPayConfirm] = React.useState(false);
-  const [openArPay, setOpenArPay] = React.useState(false);
-  const [arBookingCode, setArBookingCode] = React.useState<string | null>(null);
+  /** Thu tiền theo booking — Phải Thu hoặc Công nợ (sổ IN). */
+  const [openBookingThuTien, setOpenBookingThuTien] = React.useState(false);
+  const [bookingThuTienCode, setBookingThuTienCode] = React.useState<string | null>(null);
   const [openArAgentPay, setOpenArAgentPay] = React.useState(false);
   const [arAgentId, setArAgentId] = React.useState<string | null>(null);
   const [cnYear, setCnYear] = React.useState(() => new Date().getFullYear());
@@ -279,7 +274,7 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2 text-right">Số Tiền</th>
                       <th className="px-3 py-2 text-right">Thu Hộ</th>
                       <th className="px-3 py-2">Hạn Thanh Toán</th>
-                      <th className="px-3 py-2 text-right">Thanh Toán</th>
+                      <th className="px-3 py-2 text-right">Thu tiền</th>
                       <th className="px-3 py-2 text-center">
                         <span className="block">Đã chi đủ</span>
                         <span className="block text-[10px] font-normal text-zinc-500">Hoàn tác: Admin</span>
@@ -327,18 +322,18 @@ export default function FinanceThuPage() {
                               className={`${payBtnClass} ${forcedPaid ? "opacity-40" : ""}`}
                               disabled={forcedPaid || remaining <= 0}
                               onClick={() => {
-                                setArBookingCode(r.code);
-                                setOpenArPay(true);
+                                setBookingThuTienCode(r.code);
+                                setOpenBookingThuTien(true);
                               }}
                               title={
                                 forcedPaid
                                   ? "Đã đánh dấu đã chi đủ"
                                   : remaining > 0
                                     ? `Còn lại: ${remaining.toLocaleString("vi-VN")} ${cur}`
-                                    : "Đã thanh toán đủ"
+                                    : "Đã thu đủ"
                               }
                             >
-                              Thanh Toán
+                              Thu Tiền
                             </Button>
                           </td>
                           <td className="px-3 py-2 text-center">
@@ -351,7 +346,7 @@ export default function FinanceThuPage() {
                                   setPaidFlags(next);
                                   writePaidFlags(next);
                                 }}
-                                title="Đánh dấu đã chi đủ (ẩn nút Thanh toán)"
+                                title="Đánh dấu đã chi đủ (ẩn nút Thu tiền)"
                               />
                             ) : (
                               <Button
@@ -440,7 +435,7 @@ export default function FinanceThuPage() {
                       <th className="px-3 py-2 text-right">Doanh Thu</th>
                       <th className="px-3 py-2 text-right">Thu Hộ</th>
                       <th className="px-3 py-2 text-right">Phải Thu (Hoàn)</th>
-                      <th className="px-3 py-2 text-right">Thanh toán</th>
+                      <th className="px-3 py-2 text-right">Thu tiền</th>
                       <th className="px-3 py-2 text-center">
                         <span className="block">Đã chi đủ</span>
                         <span className="block text-[10px] font-normal text-zinc-500">Hoàn tác: Admin</span>
@@ -517,9 +512,9 @@ export default function FinanceThuPage() {
                                 setArAgentId(row.agentId);
                                 setOpenArAgentPay(true);
                               }}
-                              title={anyNet ? "Thanh toán công nợ" : "Không có số phải thu/phải hoàn"}
+                              title={anyNet ? "Thu tiền công nợ phải thu" : "Không có số phải thu/phải hoàn"}
                             >
-                              Thanh toán
+                              Thu Tiền
                             </Button>
                           </td>
                           <td className="px-3 py-2 text-center">
@@ -533,7 +528,7 @@ export default function FinanceThuPage() {
                                   setPaidFlags(next);
                                   writePaidFlags(next);
                                 }}
-                                title="Đánh dấu đã chi đủ"
+                                title="Đánh dấu đã chi đủ (ẩn nút Thu tiền)"
                               />
                             ) : (
                               <Button
@@ -736,7 +731,7 @@ export default function FinanceThuPage() {
                   <th className="px-3 py-2">Điểm Trả</th>
                   <th className="px-3 py-2 text-right">Số tiền</th>
                   <th className="px-3 py-2 text-right">Thu hộ</th>
-                  <th className="px-3 py-2 text-right">Thanh Toán</th>
+                  <th className="px-3 py-2 text-right">Thu tiền</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
@@ -766,17 +761,17 @@ export default function FinanceThuPage() {
                             className={payBtnClass}
                             disabled={remaining <= 0}
                             onClick={() => {
-                              setArBookingCode(r.code);
-                              setOpenArPay(true);
+                              setBookingThuTienCode(r.code);
+                              setOpenBookingThuTien(true);
                               setOpenDetail(false);
                             }}
                             title={
                               remaining > 0
                                 ? `Còn lại: ${remaining.toLocaleString("vi-VN")} ${cur}`
-                                : "Đã thanh toán đủ"
+                                : "Đã thu đủ"
                             }
                           >
-                            Thanh Toán
+                            Thu Tiền
                           </Button>
                         </td>
                       </tr>
@@ -841,69 +836,16 @@ export default function FinanceThuPage() {
         }}
       />
 
-      <PaymentConfirmDialogDebit
-        open={openArPay}
-        onOpenChange={(v) => {
-          setOpenArPay(v);
-          if (!v) {
-            setArBookingCode(null);
-            router.push("/finance/chi");
-          }
-        }}
-        title="Thanh toán"
-        description="Chọn quỹ tiền ra — giao dịch chi tiền; áp dụng kiểm tra số dư tiền mặt và ví."
-        fundSelectLabel="Lựa chọn quỹ tiền ra"
-        confirmButtonLabel="Thanh toán"
-        defaultCurrency={
-          (() => {
-            const booking = reservations.find((x) => x.code === arBookingCode);
-            return (String(booking?.currency || "VND").trim().toUpperCase() || "VND") as any;
-          })()
-        }
-        defaultAmount={
-          (() => {
-            const booking = reservations.find((x) => x.code === arBookingCode);
-            if (!booking) return undefined;
-            const cur = String(booking.currency || "VND").trim().toUpperCase() || "VND";
-            const total = Number(booking.amount ?? 0) || 0;
-            const received = receivedByBookingCurrency.get(booking.code)?.[cur] ?? 0;
-            const remaining = Math.max(total - received, 0);
-            return remaining > 0 ? remaining : undefined;
-          })()
-        }
-        onConfirm={(r) => {
-          if (!arBookingCode) return;
-          void addCashbookEntryFs({
-            direction: "OUT",
-            sourceId: r.sourceId,
-            currency: r.currency as any,
-            amount: r.amount,
-            method: r.sourceId === "CASH" ? "TM" : "CK",
-            content: `Chi thanh toán • Booking ${arBookingCode}`,
-            referenceType: "AR",
-            referenceId: arBookingCode,
-          });
-
-          if (r.sourceId.startsWith("WALLET:")) {
-            const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, r.currency, -r.amount);
-          }
-        }}
-      />
-
-      <PaymentConfirmDialogCredit
+      <ThuHoTransactionDialog
         open={openArAgentPay}
         onOpenChange={(v) => {
           setOpenArAgentPay(v);
-          if (!v) {
-            setArAgentId(null);
-            router.push("/finance/chi");
-          }
+          if (!v) setArAgentId(null);
         }}
-        title="Thanh toán công nợ (Travel Agent)"
-        description="Chọn quỹ — ghi nhận thu/chi công nợ theo số dư; xem sổ tại mục Chi."
-        fundSelectLabel="Lựa chọn quỹ tiền ra"
-        confirmButtonLabel="Thanh toán"
+        title="Thu tiền công nợ"
+        description="Chọn quỹ tiền vào, loại tiền và số tiền — ghi nhận thu/hoàn công nợ Travel Agent. Thu tiền: không áp dụng kiểm tra số dư không đủ."
+        fundSelectLabel="Lựa chọn quỹ tiền vào"
+        confirmLabel="Thu Tiền"
         defaultCurrency={
           (() => {
             const row = congNoByAgent.find((x) => x.agentId === arAgentId);
@@ -958,6 +900,56 @@ export default function FinanceThuPage() {
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
             void adjustDriverWalletBalanceFs(walletKey, r.currency, direction === "IN" ? r.amount : -r.amount);
+          }
+        }}
+      />
+
+      <ThuHoTransactionDialog
+        open={openBookingThuTien}
+        onOpenChange={(v) => {
+          setOpenBookingThuTien(v);
+          if (!v) setBookingThuTienCode(null);
+        }}
+        title="Thu tiền"
+        description="Chọn quỹ tiền vào — ghi nhận thu booking (Phải Thu hoặc Công nợ). Thu tiền: không áp dụng kiểm tra số dư không đủ."
+        fundSelectLabel="Lựa chọn quỹ tiền vào"
+        confirmLabel="Thu Tiền"
+        defaultCurrency={
+          (() => {
+            const booking = reservations.find((x) => x.code === bookingThuTienCode);
+            return (String(booking?.currency || "VND").trim().toUpperCase() || "VND") as any;
+          })()
+        }
+        defaultAmount={
+          (() => {
+            const booking = reservations.find((x) => x.code === bookingThuTienCode);
+            if (!booking) return undefined;
+            const cur = String(booking.currency || "VND").trim().toUpperCase() || "VND";
+            const total = Number(booking.amount ?? 0) || 0;
+            const received = receivedByBookingCurrency.get(booking.code)?.[cur] ?? 0;
+            const remaining = Math.max(total - received, 0);
+            return remaining > 0 ? remaining : undefined;
+          })()
+        }
+        onConfirm={(r) => {
+          if (!bookingThuTienCode) return;
+          const booking = reservations.find((x) => x.code === bookingThuTienCode);
+          const tag =
+            booking?.paymentType === "Công Nợ" ? "Thu tiền công nợ" : "Thu tiền phải thu";
+          void addCashbookEntryFs({
+            direction: "IN",
+            sourceId: r.sourceId,
+            currency: r.currency as any,
+            amount: r.amount,
+            method: r.sourceId === "CASH" ? "TM" : "CK",
+            content: `${tag} • Booking ${bookingThuTienCode}`,
+            referenceType: "AR",
+            referenceId: bookingThuTienCode,
+          });
+
+          if (r.sourceId.startsWith("WALLET:")) {
+            const walletKey = r.sourceId.slice("WALLET:".length);
+            void adjustDriverWalletBalanceFs(walletKey, r.currency, r.amount);
           }
         }}
       />
