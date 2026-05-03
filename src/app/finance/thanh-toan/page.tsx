@@ -251,26 +251,34 @@ function FinanceThanhToanInner() {
         defaultCurrency="VND"
         lockCurrencyTo="VND"
         defaultAmount={Number(form.amountVnd.replace(/[^\d]/g, "")) || undefined}
-        onConfirm={(r) => {
+        onConfirm={async (r) => {
           setError(null);
-          if (!expense) return setError("Không tìm thấy khoản phải trả.");
-          if (expense.status === "Cancelled") return setError("Khoản này đã bị huỷ.");
+          if (!expense) throw new Error("Không tìm thấy khoản phải trả.");
+          if (expense.status === "Cancelled") throw new Error("Khoản này đã bị huỷ.");
           const amountVnd = Math.round(r.amount);
-          if (!amountVnd || amountVnd <= 0) return setError("Số tiền không hợp lệ.");
-          if (amountVnd > remaining) return setError("Số tiền vượt quá số còn lại.");
-          if (!form.paidAtISO) return setError("Vui lòng chọn ngày thanh toán.");
+          if (!amountVnd || amountVnd <= 0) throw new Error("Số tiền không hợp lệ.");
+          if (amountVnd > remaining) throw new Error("Số tiền vượt quá số còn lại.");
+          if (!form.paidAtISO) throw new Error("Vui lòng chọn ngày thanh toán.");
 
-          // AP payment transaction
-          void addApPaymentFs({
-            expenseId: expense.id,
-            paidAtISO: form.paidAtISO,
-            amountVnd,
-            method: methodFromSourceId(r.sourceId),
-            reference: form.reference,
-          });
+          try {
+            await addApPaymentFs({
+              expenseId: expense.id,
+              paidAtISO: form.paidAtISO,
+              amountVnd,
+              method: methodFromSourceId(r.sourceId),
+              reference: form.reference,
+            });
+          } catch (e) {
+            const raw = String((e as { message?: unknown })?.message ?? e ?? "");
+            if (/permission|PERMISSION/i.test(raw)) {
+              throw new Error(
+                "Không có quyền ghi nhận thanh toán phải trả (Firestore). Kiểm tra quyền Phải trả / deploy rules.",
+              );
+            }
+            throw e instanceof Error ? e : new Error(raw);
+          }
 
-          // Cashbook entry: chi tiền từ nguồn đã chọn
-          void addCashbookEntryFs({
+          await addCashbookEntryFs({
             direction: "OUT",
             sourceId: r.sourceId,
             currency: "VND",
@@ -281,10 +289,9 @@ function FinanceThanhToanInner() {
             referenceId: expense.id,
           });
 
-          // If wallet source: reduce wallet balance
           if (r.sourceId.startsWith("WALLET:")) {
             const walletKey = r.sourceId.slice("WALLET:".length);
-            void adjustDriverWalletBalanceFs(walletKey, "VND", -amountVnd);
+            await adjustDriverWalletBalanceFs(walletKey, "VND", -amountVnd);
           }
           setForm({ paidAtISO: todayIso(), amountVnd: "", reference: "" });
         }}

@@ -145,8 +145,8 @@ service cloud.firestore {
     }
 
     match /ap_payments/{id} {
-      allow read: if isAdmin() || hasView("finance.chi") || hasView("finance.thanh-toan");
-      allow create, update, delete: if isAdmin() || hasEdit("finance.chi") || hasEdit("finance.thanh-toan");
+      allow read: if isAdmin() || hasView("finance.chi") || hasView("finance.phai-tra") || hasView("finance.thanh-toan");
+      allow create, update, delete: if isAdmin() || hasEdit("finance.chi") || hasEdit("finance.phai-tra") || hasEdit("finance.thanh-toan");
     }
 
     match /operatingExpenses/{id} {
